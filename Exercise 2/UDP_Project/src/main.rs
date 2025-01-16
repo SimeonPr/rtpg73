@@ -2,7 +2,7 @@ use std::net::UdpSocket;
 
 fn main() -> std::io::Result<()> {
     {
-        let socket = UdpSocket::bind("10.22.104.47:34254")?;
+        let socket = UdpSocket::bind("0.0.0.0:34254")?;
         
         // Receives a single datagram message on the socket. If `buf` is too small to hold
         // the message, it will be cut off.
