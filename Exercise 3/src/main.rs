@@ -8,10 +8,12 @@ use driver_rust::elevio::elev as e;
 
 mod fsm;
 
+
 fn main() -> std::io::Result<()> {
     let elev_num_floors = 4;
     let elevator_connection = e::Elevator::init("localhost:15657", elev_num_floors)?;
-    let mut elevator_state = fsm::ElevatorState::init_elevator();
+    let mut elevator_state = fsm::ElevatorState::init_elevator(elevator_connection.clone());
+
     println!("Elevator started:\n{:#?}", elevator_connection);
 
     let poll_period = Duration::from_millis(25);
@@ -41,7 +43,7 @@ fn main() -> std::io::Result<()> {
     }
 
     if elevator_connection.floor_sensor().is_none() {
-        elevator_connection.motor_direction(fsm::Dirn::Stop as u8);
+        elevator_state.fsm_on_init_between_floors();
     }
 
     loop {
