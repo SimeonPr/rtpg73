@@ -29,5 +29,6 @@ dependencies = [
 name = "ex3"
 version = "0.1.0"
 dependencies = [
+ "crossbeam-channel",
  "driver-rust",
 ]
