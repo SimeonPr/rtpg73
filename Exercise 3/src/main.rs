@@ -7,12 +7,13 @@ use driver_rust::elevio;
 use driver_rust::elevio::elev as e;
 
 mod fsm;
-
+mod timer;
 
 fn main() -> std::io::Result<()> {
     let elev_num_floors = 4;
     let elevator_connection = e::Elevator::init("localhost:15657", elev_num_floors)?;
     let mut elevator_state = fsm::ElevatorState::init_elevator(elevator_connection.clone());
+    let mut timer = timer::Timer::new();
 
     println!("Elevator started:\n{:#?}", elevator_connection);
 
@@ -41,7 +42,8 @@ fn main() -> std::io::Result<()> {
         let elevator = elevator_connection.clone();
         spawn(move || elevio::poll::obstruction(elevator, obstruction_tx, poll_period));
     }
-
+    
+    
     if elevator_connection.floor_sensor().is_none() {
         elevator_state.fsm_on_init_between_floors();
     }
@@ -52,12 +54,12 @@ fn main() -> std::io::Result<()> {
             recv(call_button_rx) -> a => {
                 let call_button = a.unwrap();
                 println!("{:#?}", call_button);
-                elevator_state.fsm_on_request_button_press(call_button.floor, call_button.call);
+                elevator_state.fsm_on_request_button_press(call_button.floor as i8, call_button.call, &mut timer);
             },
             recv(floor_sensor_rx) -> a => {
                 let floor_sensor = a.unwrap();
                 println!("{:#?}", floor_sensor);
-                elevator_state.fsm_on_floor_arrival(floor_sensor);
+                elevator_state.fsm_on_floor_arrival(floor_sensor as i8, &mut timer);
             },
             recv(stop_button_rx) -> a => {
                 let stop_button = a.unwrap();
@@ -67,7 +69,11 @@ fn main() -> std::io::Result<()> {
             recv(obstruction_rx) -> a => {
                 let obstruction = a.unwrap();
                 println!("{:#?}", obstruction);
-            },
+            }
+        }
+        if timer.timed_out(){
+            timer.stop();
+            elevator_state.fsm_on_door_time_out(&mut timer);
         }
     }
 }
