@@ -33,13 +33,18 @@ struct DirectionBehaviourPair {
     dirn: Dirn,
     behavior: ElevatorBehaviour
 }
+
 impl ElevatorState {
+
+    // set the position if it starts between floors
     pub fn fsm_on_init_between_floors(&mut self) {
         //motor direction
         self.connection.motor_direction(Dirn::Down as u8);
         self.dirn = Dirn::Down;
         self.behaviour = ElevatorBehaviour::Moving;
     }
+
+    // 
     pub fn fsm_on_request_button_press(&mut self, floor: i8, call: u8, timer: &mut timer::Timer) {
         match self.behaviour {
             ElevatorBehaviour::DoorOpen => {
@@ -73,6 +78,8 @@ impl ElevatorState {
         
         self.set_all_lights();
     }
+
+
     fn set_all_lights(&self) {
         for f in 0..4 {
             for b in 0..3 {
@@ -80,43 +87,55 @@ impl ElevatorState {
             }
         }
     }
+
     fn requests_choose_direction(&mut self) -> DirectionBehaviourPair {
         match self.dirn {
-            Dirn::Up => {
+            Dirn::Up => 
                 if self.requests_above() {
+                    // Continue moving up if requests above
                     DirectionBehaviourPair {dirn: Dirn::Up, behavior: ElevatorBehaviour::Moving}
                 } else if self.requests_here() {
+                    // If requests at current floor, open door
                     DirectionBehaviourPair {dirn: Dirn::Down, behavior: ElevatorBehaviour::DoorOpen}
-                } else if self.requests_above() {
+                } else if self.requests_below() {
+                    // If no requests above, go down if requests below
                     DirectionBehaviourPair {dirn: Dirn::Down, behavior: ElevatorBehaviour::Moving}
                 } else {
+                    // No requests, go idle
                     DirectionBehaviourPair {dirn: Dirn::Stop, behavior: ElevatorBehaviour::Idle}
-                }
-            },
-            Dirn::Down => {
+                },
+            Dirn::Down => 
                 if self.requests_below() {
+                    // Continue moving down if requests below
                     DirectionBehaviourPair {dirn: Dirn::Down, behavior: ElevatorBehaviour::Moving}
                 } else if self.requests_here() {
+                    // If requests at current floor, open door
                     DirectionBehaviourPair {dirn: Dirn::Up, behavior: ElevatorBehaviour::DoorOpen}
                 } else if self.requests_above() {
+                    // If no requests below, go up if requests above
                     DirectionBehaviourPair {dirn: Dirn::Up, behavior: ElevatorBehaviour::Moving}
                 } else {
+                    // No requests, go idle
                     DirectionBehaviourPair {dirn: Dirn::Stop, behavior: ElevatorBehaviour::Idle}
-                }
-            },
-            Dirn::Stop => {
+                },
+            Dirn::Stop => 
                 if self.requests_here() {
+                    // If requests at current floor, open door
                     DirectionBehaviourPair {dirn: Dirn::Stop, behavior: ElevatorBehaviour::DoorOpen}
                 } else if self.requests_above() {
+                    // If requests above, go up
                     DirectionBehaviourPair {dirn: Dirn::Up, behavior: ElevatorBehaviour::Moving}
                 } else if self.requests_below() {
+                    // If requests below, go down
                     DirectionBehaviourPair {dirn: Dirn::Down, behavior: ElevatorBehaviour::Moving}
                 } else {
+                    // No requests, stay idle
                     DirectionBehaviourPair {dirn: Dirn::Stop, behavior: ElevatorBehaviour::Idle}
                 }
-            }
         }
     }
+
+
     pub fn fsm_on_door_time_out(&mut self, timer: &mut Timer) {
         match self.behaviour {
             ElevatorBehaviour::DoorOpen => {
@@ -139,6 +158,8 @@ impl ElevatorState {
             _ => {}
         }
     }
+
+    // Check if the requests should be cleared immediately
     fn requests_should_clear_immediately(&mut self, floor: i8, _call: u8) -> bool {
          self.floor == floor
     }
@@ -161,8 +182,8 @@ impl ElevatorState {
             }
             _ => {},
         };
-        self.connection.motor_direction(Dirn::Stop as u8);
     }
+
     fn requests_clear_at_current_floor(&mut self) {
         for b in 0..3 {
             self.requests[self.floor as usize][b as usize] = 0;

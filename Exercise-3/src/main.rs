@@ -1,3 +1,4 @@
+use std::{thread, time};
 use std::thread::*;
 use std::time::*;
 
@@ -71,8 +72,8 @@ fn main() -> std::io::Result<()> {
                 println!("{:#?}", obstruction);
             }
         }
-        if timer.timed_out(){
-            timer.stop();
+        thread::sleep(time::Duration::from_millis(10));
+        if timer.timed_out() {
             elevator_state.fsm_on_door_time_out(&mut timer);
         }
     }
