@@ -1,7 +1,8 @@
 use driver_rust::elevio::elev::Elevator;
 
 use crate::timer::{self, Timer};
-
+const FLOOR_COUNT: usize = 4;
+const CALL_COUNT: usize = 3;
 #[derive(Debug)]
 enum ElevatorBehaviour {
     Idle,
@@ -24,7 +25,7 @@ enum Button {
 pub struct ElevatorState {
     floor: i8,
     dirn: Dirn,
-    requests: [[i32; 3]; 4],
+    requests: [[i32; CALL_COUNT]; FLOOR_COUNT],
     behaviour: ElevatorBehaviour,
     door_open_duration: f64,
     connection: Elevator
@@ -39,7 +40,7 @@ impl ElevatorState {
         ElevatorState {
             floor: -1,
             dirn: Dirn::Stop,
-            requests: [[0;3]; 4],
+            requests: [[0;CALL_COUNT]; FLOOR_COUNT],
             behaviour: ElevatorBehaviour::Idle,
             door_open_duration: 3.0,
             connection: elevator_connection
@@ -137,9 +138,9 @@ impl ElevatorState {
     }
     
     fn set_all_lights(&self) {
-        for f in 0..4 {
-            for b in 0..3 {
-                self.connection.call_button_light(f, b, self.requests[f as usize][b as usize] == 1);
+        for f in 0..FLOOR_COUNT {
+            for b in 0..CALL_COUNT {
+                self.connection.call_button_light(f as u8, b as u8, self.requests[f as usize][b as usize] == 1);
             }
         }
     }
@@ -183,13 +184,14 @@ impl ElevatorState {
     }
     
     fn requests_clear_at_current_floor(&mut self) {
-        for b in 0..3 {
+        println!("Clearing all lights at {}", self.floor);
+        for b in 0..CALL_COUNT {
             self.requests[self.floor as usize][b as usize] = 0;
         }
     }
     
     fn requests_here(&self) -> bool {
-        for b in 0..3 {
+        for b in 0..CALL_COUNT {
             if self.requests[self.floor as usize][b as usize] == 1 {
                 return true;
             }
@@ -199,7 +201,7 @@ impl ElevatorState {
     
     fn requests_below(&self) -> bool {
         for f in 0..self.floor {
-            for b in 0..3 {
+            for b in 0..CALL_COUNT {
                 if self.requests[f as usize][b as usize] == 1 {
                     return true;
                 }
@@ -209,8 +211,8 @@ impl ElevatorState {
     }
     
     fn requests_above(&self) -> bool {
-        for f in self.floor..4 {
-            for b in 0..3 {
+        for f in (self.floor as usize)..FLOOR_COUNT {
+            for b in 0..CALL_COUNT {
                 if self.requests[f as usize][b as usize] == 1 {
                     return true;
                 }
