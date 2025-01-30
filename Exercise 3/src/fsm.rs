@@ -128,7 +128,6 @@ impl ElevatorState {
             }
             _ => {},
         };
-        self.connection.motor_direction(Dirn::Stop as u8);
     }
 
     pub fn fsm_on_stop_button_press(&mut self){}
