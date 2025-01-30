@@ -1,8 +1,8 @@
 use std::thread::*;
-use std::time::*;
-
+use env_logger;
+use std::thread;
 use crossbeam_channel as cbc;
-
+use std::time::Duration;
 use driver_rust::elevio;
 use driver_rust::elevio::elev as e;
 
@@ -10,10 +10,10 @@ mod fsm;
 mod timer;
 
 fn main() -> std::io::Result<()> {
+    env_logger::init();
     let elev_num_floors = 4;
     let elevator_connection = e::Elevator::init("localhost:15657", elev_num_floors)?;
     let mut elevator_state = fsm::ElevatorState::init_elevator(elevator_connection.clone());
-    let mut timer = timer::Timer::new();
 
     println!("Elevator started:\n{:#?}", elevator_connection);
 
@@ -49,31 +49,24 @@ fn main() -> std::io::Result<()> {
     }
 
     loop {
-        println!("{:#?}", elevator_state);
         cbc::select! {
             recv(call_button_rx) -> a => {
                 let call_button = a.unwrap();
-                println!("{:#?}", call_button);
-                elevator_state.fsm_on_request_button_press(call_button.floor as i8, call_button.call, &mut timer);
+                elevator_state.fsm_on_request_button_press(call_button.floor as i8, call_button.call);
             },
             recv(floor_sensor_rx) -> a => {
                 let floor_sensor = a.unwrap();
-                println!("{:#?}", floor_sensor);
-                elevator_state.fsm_on_floor_arrival(floor_sensor as i8, &mut timer);
+                elevator_state.fsm_on_floor_arrival(floor_sensor as i8);
             },
             recv(stop_button_rx) -> a => {
                 let stop_button = a.unwrap();
-                println!("{:#?}", stop_button);
                 elevator_state.fsm_on_stop_button_press();
             },
             recv(obstruction_rx) -> a => {
                 let obstruction = a.unwrap();
-                println!("{:#?}", obstruction);
-            }
-        }
-        if timer.timed_out(){
-            timer.stop();
-            elevator_state.fsm_on_door_time_out(&mut timer);
-        }
+            },
+            default => { }
+        };
+        thread::sleep(Duration::from_millis(10));
     }
 }

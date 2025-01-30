@@ -1,6 +1,9 @@
 use driver_rust::elevio::elev::Elevator;
+use log::{info, trace};
 
-use crate::timer::{self, Timer};
+use std::thread;
+use std::time::Duration;
+
 const FLOOR_COUNT: usize = 4;
 const CALL_COUNT: usize = 3;
 #[derive(Debug)]
@@ -27,7 +30,7 @@ pub struct ElevatorState {
     dirn: Dirn,
     requests: [[i32; CALL_COUNT]; FLOOR_COUNT],
     behaviour: ElevatorBehaviour,
-    door_open_duration: f64,
+    door_open_duration: u64,
     connection: Elevator
 }
 struct DirectionBehaviourPair {
@@ -37,28 +40,32 @@ struct DirectionBehaviourPair {
 impl ElevatorState {
     
     pub fn init_elevator(elevator_connection: Elevator) -> ElevatorState {
+        trace!("init_elevator");
         ElevatorState {
             floor: -1,
             dirn: Dirn::Stop,
             requests: [[0;CALL_COUNT]; FLOOR_COUNT],
             behaviour: ElevatorBehaviour::Idle,
-            door_open_duration: 3.0,
+            door_open_duration: 3,
             connection: elevator_connection
         }
     }
     
     pub fn fsm_on_init_between_floors(&mut self) {
+        trace!("fsm_on_init_between_floors");
         //motor direction
         self.connection.motor_direction(Dirn::Down as u8);
         self.dirn = Dirn::Down;
         self.behaviour = ElevatorBehaviour::Moving;
     }
     
-    pub fn fsm_on_request_button_press(&mut self, floor: i8, call: u8, timer: &mut timer::Timer) {
+    pub fn fsm_on_request_button_press(&mut self, floor: i8, call: u8) {
+        trace!("fsm_on_request_button_press");
         match self.behaviour {
             ElevatorBehaviour::DoorOpen => {
                 if self.requests_should_clear_immediately(floor, call) {
-                    timer.start(self.door_open_duration);
+                    thread::sleep(Duration::from_secs(self.door_open_duration));
+                    self.fsm_on_door_time_out();
                 } else {
                     self.requests[floor as usize][call as usize] = 1;
                 }
@@ -75,7 +82,8 @@ impl ElevatorState {
                     ElevatorBehaviour::Idle => {},
                     ElevatorBehaviour::DoorOpen => {
                         self.connection.door_light(true);
-                        timer.start(self.door_open_duration);
+                        thread::sleep(Duration::from_secs(self.door_open_duration));
+                        self.fsm_on_door_time_out();
                         self.requests_clear_at_current_floor();
                     },
                     ElevatorBehaviour::Moving => {
@@ -88,7 +96,8 @@ impl ElevatorState {
         self.set_all_lights();
     }
 
-    pub fn fsm_on_door_time_out(&mut self, timer: &mut Timer) {
+    pub fn fsm_on_door_time_out(&mut self) {
+        trace!("fsm_on_door_time_out");
         match self.behaviour {
             ElevatorBehaviour::DoorOpen => {
                 let pair: DirectionBehaviourPair = self.requests_choose_direction();
@@ -97,7 +106,7 @@ impl ElevatorState {
 
                 match self.behaviour {
                     ElevatorBehaviour::DoorOpen => {
-                        timer.start(self.door_open_duration);
+                        thread::sleep(Duration::from_secs(self.door_open_duration));
                         self.requests_clear_at_current_floor();
                         self.set_all_lights();
                     },
@@ -111,7 +120,8 @@ impl ElevatorState {
         }
     }
     
-    pub fn fsm_on_floor_arrival(&mut self, floor: i8, timer: &mut timer::Timer) {
+    pub fn fsm_on_floor_arrival(&mut self, floor: i8) {
+        trace!("fsm_on_floor_arrival");
         self.floor = floor;
         self.connection.floor_indicator(self.floor as u8);
 
@@ -121,9 +131,9 @@ impl ElevatorState {
                     self.connection.motor_direction(Dirn::Stop as u8);
                     self.connection.door_light(true);
                     self.requests_clear_at_current_floor();
-                    // timer
-                    timer.start(self.door_open_duration);
-                    //self.set_all_light();
+                    thread::sleep(Duration::from_secs(self.door_open_duration));
+                    self.fsm_on_door_time_out();
+                    self.set_all_lights();
                     self.behaviour = ElevatorBehaviour::DoorOpen;
                 }
             }
@@ -134,10 +144,12 @@ impl ElevatorState {
     pub fn fsm_on_stop_button_press(&mut self){}
 
     fn requests_should_clear_immediately(&mut self, floor: i8, _call: u8) -> bool {
+        trace!("request_should_clear_immediately");
          self.floor == floor
     }
     
     fn set_all_lights(&self) {
+        trace!("set_all_lights");
         for f in 0..FLOOR_COUNT {
             for b in 0..CALL_COUNT {
                 self.connection.call_button_light(f as u8, b as u8, self.requests[f as usize][b as usize] == 1);
@@ -146,6 +158,7 @@ impl ElevatorState {
     }
     
     fn requests_choose_direction(&mut self) -> DirectionBehaviourPair {
+        trace!("requests_choose_direction");
         match self.dirn {
             Dirn::Up => {
                 if self.requests_above() {
@@ -184,13 +197,14 @@ impl ElevatorState {
     }
     
     fn requests_clear_at_current_floor(&mut self) {
-        println!("Clearing all lights at {}", self.floor);
+        trace!("requests_clear_at_current_floor");
         for b in 0..CALL_COUNT {
             self.requests[self.floor as usize][b as usize] = 0;
         }
     }
     
     fn requests_here(&self) -> bool {
+        trace!("requests_here");
         for b in 0..CALL_COUNT {
             if self.requests[self.floor as usize][b as usize] == 1 {
                 return true;
@@ -200,6 +214,7 @@ impl ElevatorState {
     }
     
     fn requests_below(&self) -> bool {
+        trace!("requests_below");
         for f in 0..self.floor {
             for b in 0..CALL_COUNT {
                 if self.requests[f as usize][b as usize] == 1 {
@@ -211,6 +226,7 @@ impl ElevatorState {
     }
     
     fn requests_above(&self) -> bool {
+        trace!("requests_above");
         for f in (self.floor as usize)..FLOOR_COUNT {
             for b in 0..CALL_COUNT {
                 if self.requests[f as usize][b as usize] == 1 {
@@ -222,6 +238,7 @@ impl ElevatorState {
     }
     
     fn requests_should_stop(&self) -> bool {
+        trace!("requests_should_stop");
         match self.dirn {
             Dirn::Down => {
                 self.requests[self.floor as usize][Button::HallDown as usize] == 1||
