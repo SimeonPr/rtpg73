@@ -1,9 +1,9 @@
 use driver_rust::elevio::elev::Elevator;
-use log::{info, trace};
+use log::trace;
 
 use std::thread;
 use std::time::Duration;
-
+use crossbeam_channel as cbc;
 const FLOOR_COUNT: usize = 4;
 const CALL_COUNT: usize = 3;
 #[derive(Debug)]
@@ -26,6 +26,8 @@ enum Button {
 }
 #[derive(Debug)]
 pub struct ElevatorState {
+    timer_tx: cbc::Sender<bool>,
+    no_of_timer_threads: u8,
     floor: i8,
     dirn: Dirn,
     requests: [[i32; CALL_COUNT]; FLOOR_COUNT],
@@ -33,15 +35,18 @@ pub struct ElevatorState {
     door_open_duration: u64,
     connection: Elevator
 }
+#[derive(Debug)]
 struct DirectionBehaviourPair {
     dirn: Dirn,
     behavior: ElevatorBehaviour
 }
 impl ElevatorState {
     
-    pub fn init_elevator(elevator_connection: Elevator) -> ElevatorState {
+    pub fn init_elevator(elevator_connection: Elevator, timer_tx: cbc::Sender<bool>) -> ElevatorState {
         trace!("init_elevator");
         ElevatorState {
+            timer_tx,
+            no_of_timer_threads: 0,
             floor: -1,
             dirn: Dirn::Stop,
             requests: [[0;CALL_COUNT]; FLOOR_COUNT],
@@ -64,8 +69,7 @@ impl ElevatorState {
         match self.behaviour {
             ElevatorBehaviour::DoorOpen => {
                 if self.requests_should_clear_immediately(floor, call) {
-                    thread::sleep(Duration::from_secs(self.door_open_duration));
-                    self.fsm_on_door_time_out();
+                    self.start_time_out_thread();
                 } else {
                     self.requests[floor as usize][call as usize] = 1;
                 }
@@ -82,8 +86,7 @@ impl ElevatorState {
                     ElevatorBehaviour::Idle => {},
                     ElevatorBehaviour::DoorOpen => {
                         self.connection.door_light(true);
-                        thread::sleep(Duration::from_secs(self.door_open_duration));
-                        self.fsm_on_door_time_out();
+                        self.start_time_out_thread();
                         self.requests_clear_at_current_floor();
                     },
                     ElevatorBehaviour::Moving => {
@@ -98,6 +101,8 @@ impl ElevatorState {
 
     pub fn fsm_on_door_time_out(&mut self) {
         trace!("fsm_on_door_time_out");
+        self.no_of_timer_threads -= 1;
+        if self.no_of_timer_threads > 0 {return;}
         match self.behaviour {
             ElevatorBehaviour::DoorOpen => {
                 let pair: DirectionBehaviourPair = self.requests_choose_direction();
@@ -106,7 +111,7 @@ impl ElevatorState {
 
                 match self.behaviour {
                     ElevatorBehaviour::DoorOpen => {
-                        thread::sleep(Duration::from_secs(self.door_open_duration));
+                        self.start_time_out_thread();
                         self.requests_clear_at_current_floor();
                         self.set_all_lights();
                     },
@@ -131,8 +136,7 @@ impl ElevatorState {
                     self.connection.motor_direction(Dirn::Stop as u8);
                     self.connection.door_light(true);
                     self.requests_clear_at_current_floor();
-                    thread::sleep(Duration::from_secs(self.door_open_duration));
-                    self.fsm_on_door_time_out();
+                    self.start_time_out_thread();
                     self.set_all_lights();
                     self.behaviour = ElevatorBehaviour::DoorOpen;
                 }
@@ -143,6 +147,16 @@ impl ElevatorState {
 
     pub fn fsm_on_stop_button_press(&mut self){}
 
+    fn start_time_out_thread(&mut self) {
+        trace!("sleep");
+        self.no_of_timer_threads += 1;
+        let timer_tx_clone = self.timer_tx.clone();
+        let duration = self.door_open_duration;
+        thread::spawn(move || {
+            thread::sleep(Duration::from_secs(duration));
+            timer_tx_clone.send(true).unwrap();
+        });
+    }
     fn requests_should_clear_immediately(&mut self, floor: i8, _call: u8) -> bool {
         trace!("request_should_clear_immediately");
          self.floor == floor
