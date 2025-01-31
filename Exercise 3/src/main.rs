@@ -1,6 +1,6 @@
 use std::thread::*;
 use env_logger;
-use std::thread;
+
 use crossbeam_channel as cbc;
 use std::time::Duration;
 use driver_rust::elevio;
@@ -13,9 +13,8 @@ fn main() -> std::io::Result<()> {
     env_logger::init();
     let elev_num_floors = 4;
     let elevator_connection = e::Elevator::init("localhost:15657", elev_num_floors)?;
-    let mut elevator_state = fsm::ElevatorState::init_elevator(elevator_connection.clone());
-
-    println!("Elevator started:\n{:#?}", elevator_connection);
+    let (timer_tx, timer_rx) = cbc::unbounded::<bool>();
+    let mut elevator_state = fsm::ElevatorState::init_elevator(elevator_connection.clone(), timer_tx);
 
     let poll_period = Duration::from_millis(25);
 
@@ -59,14 +58,16 @@ fn main() -> std::io::Result<()> {
                 elevator_state.fsm_on_floor_arrival(floor_sensor as i8);
             },
             recv(stop_button_rx) -> a => {
-                let stop_button = a.unwrap();
+                let _stop_button = a.unwrap();
                 elevator_state.fsm_on_stop_button_press();
             },
             recv(obstruction_rx) -> a => {
-                let obstruction = a.unwrap();
+                let _obstruction = a.unwrap();
             },
-            default => { }
+            recv(timer_rx) -> a => {
+                let _time_out = a.unwrap();
+                elevator_state.fsm_on_door_time_out();
+            }
         };
-        thread::sleep(Duration::from_millis(10));
     }
 }
