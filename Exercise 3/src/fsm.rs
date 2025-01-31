@@ -165,7 +165,7 @@ impl ElevatorState {
                     DirectionBehaviourPair {dirn: Dirn::Up, behavior: ElevatorBehaviour::Moving}
                 } else if self.requests_here() {
                     DirectionBehaviourPair {dirn: Dirn::Down, behavior: ElevatorBehaviour::DoorOpen}
-                } else if self.requests_above() {
+                } else if self.requests_below() {
                     DirectionBehaviourPair {dirn: Dirn::Down, behavior: ElevatorBehaviour::Moving}
                 } else {
                     DirectionBehaviourPair {dirn: Dirn::Stop, behavior: ElevatorBehaviour::Idle}
