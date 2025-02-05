@@ -47,7 +47,7 @@ fn supervisor() {
 
             actor(counter);
             
-        } else {   // Last update within allowed time span
+        } else {   // Last update was within allowed time span
             file.seek(SeekFrom::Start(0)).expect("couldn't seek file");
             
             let mut s = String::new();
@@ -67,7 +67,7 @@ fn supervisor() {
 
         }        
 
-        sleep(Duration::from_secs(1));
+        sleep(Duration::from_secs(TIMEOUT_SECONDS));
     }
 }
 
