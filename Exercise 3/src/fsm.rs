@@ -241,7 +241,7 @@ impl ElevatorState {
     
     fn requests_above(&self) -> bool {
         trace!("requests_above");
-        for f in (self.floor as usize)..FLOOR_COUNT {
+        for f in ((self.floor+1) as usize)..FLOOR_COUNT {
             for b in 0..CALL_COUNT {
                 if self.requests[f as usize][b as usize] == 1 {
                     return true;
