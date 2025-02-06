@@ -212,8 +212,27 @@ impl ElevatorState {
     
     fn requests_clear_at_current_floor(&mut self) {
         trace!("requests_clear_at_current_floor");
-        for b in 0..CALL_COUNT {
-            self.requests[self.floor as usize][b as usize] = 0;
+        //for b in 0..CALL_COUNT {
+          //  self.requests[self.floor as usize][b as usize] = 0;
+        //}
+        self.requests[self.floor as usize][Button::Cab as usize] = 0;
+        match self.dirn {
+            Dirn::Up => {
+                if !self.requests_above() && (self.requests[self.floor as usize][Button::HallUp as usize] == 0) {
+                    self.requests[self.floor as usize][Button::HallDown as usize] = 0;
+                }
+                self.requests[self.floor as usize][Button::HallUp as usize] = 0;
+            },
+            Dirn::Down => {
+                if !self.requests_below() && (self.requests[self.floor as usize][Button::HallDown as usize] == 0) {
+                    self.requests[self.floor as usize][Button::HallUp as usize] = 0;
+                }
+                self.requests[self.floor as usize][Button::HallDown as usize] = 0;
+            },
+            Dirn::Stop => {
+               self.requests[self.floor as usize][Button::HallUp as usize] = 0;
+               self.requests[self.floor as usize][Button::HallDown as usize] = 0;
+            }
         }
     }
     
