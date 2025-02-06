@@ -33,7 +33,8 @@ pub struct ElevatorState {
     requests: [[i32; CALL_COUNT]; FLOOR_COUNT],
     behaviour: ElevatorBehaviour,
     door_open_duration: u64,
-    connection: Elevator
+    connection: Elevator,
+    obstruction: bool
 }
 #[derive(Debug)]
 struct DirectionBehaviourPair {
@@ -52,7 +53,8 @@ impl ElevatorState {
             requests: [[0;CALL_COUNT]; FLOOR_COUNT],
             behaviour: ElevatorBehaviour::Idle,
             door_open_duration: 3,
-            connection: elevator_connection
+            connection: elevator_connection,
+            obstruction: false
         }
     }
     
@@ -103,6 +105,10 @@ impl ElevatorState {
         trace!("fsm_on_door_time_out");
         self.no_of_timer_threads -= 1;
         if self.no_of_timer_threads > 0 {return;}
+        if self.obstruction  {
+            self.start_time_out_thread();
+            return;
+        }
         match self.behaviour {
             ElevatorBehaviour::DoorOpen => {
                 let pair: DirectionBehaviourPair = self.requests_choose_direction();
@@ -124,7 +130,10 @@ impl ElevatorState {
             _ => {}
         }
     }
-    
+    pub fn fsm_on_obstruction(&mut self, val: bool) {
+        trace!("fsm_on_obstruction");
+        self.obstruction = val;
+    }
     pub fn fsm_on_floor_arrival(&mut self, floor: i8) {
         trace!("fsm_on_floor_arrival");
         self.floor = floor;
