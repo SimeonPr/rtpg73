@@ -7,7 +7,6 @@ use driver_rust::elevio;
 use driver_rust::elevio::elev as e;
 
 mod fsm;
-mod timer;
 
 fn main() -> std::io::Result<()> {
     env_logger::init();
