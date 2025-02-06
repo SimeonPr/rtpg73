@@ -62,7 +62,8 @@ fn main() -> std::io::Result<()> {
                 elevator_state.fsm_on_stop_button_press();
             },
             recv(obstruction_rx) -> a => {
-                let _obstruction = a.unwrap();
+                let obstruction = a.unwrap();
+                elevator_state.fsm_on_obstruction(obstruction);
             },
             recv(timer_rx) -> a => {
                 let _time_out = a.unwrap();
