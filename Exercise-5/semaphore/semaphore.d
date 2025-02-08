@@ -123,6 +123,7 @@ void main(){
         format("Test 3 failed: Did not run high priority users first, instead ran %s", val[13..18]));
     assert(val[18..20].all!("a >= 6") && val[18..20].all!("a <= 7"),
         format("Test 3 failed: Did not run low priority users last, instead ran %s", val[18..20]));
+    writefln("Execution order: [%(%s, %)]", val);
     writeln("All tests pass");
 }
 
