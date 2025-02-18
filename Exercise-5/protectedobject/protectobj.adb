@@ -30,6 +30,7 @@ procedure protectobj is
     end Resource;
    protected body Resource is
       
+    -- Fix the conditions
       entry AllocateHigh(val: out IntVec.Vector) when not Busy and allocateHigh'Count = 0 is
       begin
          -- Put_Line("AllocateHigh");
