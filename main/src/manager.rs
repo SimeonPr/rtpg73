@@ -17,6 +17,13 @@ pub fn run(manager_rx: cbc::Receiver<messages::Manager>,
                             info!("Received ping");
                         },
                     }
+                },
+                recv(call_button_rx) -> a => {
+                    let message = a.unwrap();
+                    info!("Received button press");
+                    debug!("{:?}", message);
+                    // forward to controller
+                    controller_tx.send(messages::Controller::Request(message)).unwrap();
                 }
             }
         }

@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
 use bincode;
+use driver_rust::elevio;
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Manager {
     Ping
@@ -8,7 +9,8 @@ pub enum Manager {
 pub enum Network {
     Ping
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub enum Controller {
-    Ping
+    Ping,
+    Request(elevio::poll::CallButton)
 }

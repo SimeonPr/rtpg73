@@ -46,6 +46,9 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
                     messages::Controller::Ping => {
                         info!("Received ping");
                     },
+                    messages::Controller::Request(call_button) => {
+                        elevator_state.fsm_on_request_button_press(call_button.floor as i8, call_button.call);
+                    }
                 }
             },
             recv(floor_sensor_rx) -> a => {
