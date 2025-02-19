@@ -1,24 +1,21 @@
 use crossbeam_channel as cbc;
 use driver_rust::elevio;
 use driver_rust::elevio::elev as e;
-use log::debug;
-use log::info;
+use log::{debug, info};
+
 use crate::messages;
 use crate::fsm;
 use std::thread::spawn;
 use std::time::Duration;
-use env_logger;
 
-pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::Sender<messages::Manager>) -> std::io::Result<()> {
-    debug!("Controller up and running...");
-    let elev_num_floors = 4;
-    let elevator_connection = e::Elevator::init("localhost:15657", elev_num_floors)?;
+pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::Sender<messages::Manager>, elevator_connection: e::Elevator) -> std::io::Result<()> {
+    debug!("Controller up and running.");
     let (timer_tx, timer_rx) = cbc::unbounded::<bool>();
     let mut elevator_state = fsm::ElevatorState::init_elevator(elevator_connection.clone(), timer_tx);
 
     let poll_period = Duration::from_millis(25);
 
-    debug!("Starting hardware monitors...");
+    debug!("Starting hardware monitors.");
     let (floor_sensor_tx, floor_sensor_rx) = cbc::unbounded::<u8>();
     {
         let elevator = elevator_connection.clone();
@@ -36,20 +33,20 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
         let elevator = elevator_connection.clone();
         spawn(move || elevio::poll::obstruction(elevator, obstruction_tx, poll_period));
     }
-    
-    
+    debug!("before elevator_connection.floor_sensor().is_none()");
     if elevator_connection.floor_sensor().is_none() {
+        debug!("before elevator_state.fsm_on_init_between_floor()");
         elevator_state.fsm_on_init_between_floors();
     }
-
+    debug!("after elevator_connection.floor_sensor().is_none()");
     loop {
-        debug!("Waiting for input...");
+        debug!("Waiting for input.");
         cbc::select! {
             recv(controller_rx) -> a => {
                 let message = a.unwrap();
                 match message {
                     messages::Controller::Ping => {
-                        info!("Received ping");
+                        debug!("Received ping");
                     },
                 }
             },
