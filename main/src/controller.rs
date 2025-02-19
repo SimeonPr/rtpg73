@@ -33,12 +33,10 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
         let elevator = elevator_connection.clone();
         spawn(move || elevio::poll::obstruction(elevator, obstruction_tx, poll_period));
     }
-    debug!("before elevator_connection.floor_sensor().is_none()");
     if elevator_connection.floor_sensor().is_none() {
-        debug!("before elevator_state.fsm_on_init_between_floor()");
         elevator_state.fsm_on_init_between_floors();
     }
-    debug!("after elevator_connection.floor_sensor().is_none()");
+
     loop {
         debug!("Waiting for input.");
         cbc::select! {
@@ -46,7 +44,7 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
                 let message = a.unwrap();
                 match message {
                     messages::Controller::Ping => {
-                        debug!("Received ping");
+                        info!("Received ping");
                     },
                 }
             },
