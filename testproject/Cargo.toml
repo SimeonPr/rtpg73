@@ -1,0 +1,10 @@
+[package]
+name = "testproject"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"  # Optional if you want to use date/time functionality
+
