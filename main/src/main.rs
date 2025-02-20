@@ -50,6 +50,7 @@ fn main() {
     let b = spawn(move || elevio::poll::call_buttons(elev, call_button_tx, poll_period));
     
     controller_tx.send(messages::Controller::Ping).unwrap();
+    
     manager_tx.send(messages::Manager::Ping).unwrap();
 
     let _ = m.join();

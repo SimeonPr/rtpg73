@@ -28,7 +28,7 @@ pub struct ElevatorNetworkState {
 struct Elevator {
     id: u8, // any nodes id
     last_received: SystemTime,
-    available: bool,
+    available: bool, // remove 
     state: ElevatorNetworkState,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -125,10 +125,13 @@ impl WorldView {
             for dir in 0..2 {
                 let mut counter = 0; 
                 for id in alive_elevators.iter() {
-                    let e = self.elevators.get(id).unwrap();
-                    if e. ==RequestState::Unconfirmed {
-
+                    let e = self.hall_requests.get(id).unwrap();
+                    if e[floor][dir] == RequestState::Unconfirmed{
+                        couter +=1
                     }
+                }
+                if counter > alive_elevators.len(){
+                    
                 }
             }
         }
