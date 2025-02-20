@@ -1,19 +1,21 @@
 use driver_rust::elevio::elev::Elevator;
 use log::trace;
+use serde::{Serialize, Deserialize};
 
 use std::thread;
 use std::time::Duration;
 use crossbeam_channel as cbc;
-const FLOOR_COUNT: usize = 4;
+use crate::config::FLOOR_COUNT;
+
 const CALL_COUNT: usize = 3;
-#[derive(Debug)]
-enum ElevatorBehaviour {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum ElevatorBehaviour {
     Idle,
     DoorOpen,
     Moving
 }
-#[derive(Debug, Copy, Clone)]
-enum Dirn {
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub enum Dirn {
     Down = -1,
     Stop = 0,
     Up = 1

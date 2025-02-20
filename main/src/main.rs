@@ -13,6 +13,7 @@ mod sender;
 mod receiver;
 mod alarm;
 mod fsm;
+mod config;
 
 fn main() {
     env_logger::init();
@@ -22,7 +23,7 @@ fn main() {
     let (manager_tx, manager_rx) = cbc::unbounded::<messages::Manager>();
     let (controller_tx, controller_rx) = cbc::unbounded::<messages::Controller>();
     let (sender_tx, sender_rx) = cbc::unbounded::<messages::Network>();
-    let (alarm_tx, alarm_rx) = cbc::unbounded::<u8>();
+    //let (alarm_tx, alarm_rx) = cbc::unbounded::<u8>();
     let (call_button_tx, call_button_rx) = cbc::unbounded::<elevio::poll::CallButton>();
 
     // create elevator_connection object
