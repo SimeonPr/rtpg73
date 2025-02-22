@@ -52,7 +52,7 @@ fn main() {
     // spawn alarm
     let timeout = Duration::from_secs(1);
     let alarm_tx_clone = alarm_tx.clone();
-    let a = spawn(move || alarm::run(alarm_tx_clone));
+    let a = spawn(move || alarm::run(alarm_tx_clone, timeout));
     controller_tx.send(messages::Controller::Ping).unwrap();
     
     manager_tx.send(messages::Manager::Ping).unwrap();
