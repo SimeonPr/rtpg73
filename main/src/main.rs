@@ -23,7 +23,7 @@ fn main() {
     let (manager_tx, manager_rx) = cbc::unbounded::<messages::Manager>();
     let (controller_tx, controller_rx) = cbc::unbounded::<messages::Controller>();
     let (sender_tx, sender_rx) = cbc::unbounded::<messages::Network>();
-    //let (alarm_tx, alarm_rx) = cbc::unbounded::<u8>();
+    let (alarm_tx, alarm_rx) = cbc::unbounded::<u8>();
     let (call_button_tx, call_button_rx) = cbc::unbounded::<elevio::poll::CallButton>();
 
     // create elevator_connection object
@@ -34,7 +34,8 @@ fn main() {
     // spawn manager
     let sender_tx_clone = sender_tx.clone();
     let controller_tx_clone = controller_tx.clone();
-    let m = spawn(move || manager::run(manager_rx, sender_tx_clone, controller_tx_clone, call_button_rx));
+    let alarm_rx_clone = alarm_rx.clone();
+    let m = spawn(move || manager::run(manager_rx, sender_tx_clone, controller_tx_clone, call_button_rx, alarm_rx_clone));
     // spawn controller
     let manager_tx_clone = manager_tx.clone();
     let elev = elevator_connection.clone();
@@ -48,7 +49,10 @@ fn main() {
     let poll_period = Duration::from_millis(25);
     let elev = elevator_connection.clone();
     let b = spawn(move || elevio::poll::call_buttons(elev, call_button_tx, poll_period));
-    
+    // spawn alarm
+    let timeout = Duration::from_secs(1);
+    let alarm_tx_clone = alarm_tx.clone();
+    let a = spawn(move || alarm::run(alarm_tx_clone));
     controller_tx.send(messages::Controller::Ping).unwrap();
     
     manager_tx.send(messages::Manager::Ping).unwrap();
@@ -58,4 +62,5 @@ fn main() {
     let _ = s.join();
     let _ = r.join();
     let _ = b.join();
+    let _ = a.join();
 }

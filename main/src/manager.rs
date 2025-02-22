@@ -143,6 +143,7 @@ pub fn run(
     sender_tx: cbc::Sender<messages::Network>,
     controller_tx: cbc::Sender<messages::Controller>,
     call_button_rx: cbc::Receiver<elevio::poll::CallButton>,
+    alarm_rx: cbc::Receiver<u8>,
 ) {
     debug!("Manager up and running...");
     let mut world_view = WorldView::init(1);
@@ -170,6 +171,9 @@ pub fn run(
                 debug!("{:?}", message);
                 // forward to controller
                 controller_tx.send(messages::Controller::Request(message)).unwrap();
+            },
+            recv(alarm_rx) -> _a => {
+                info!("Received alarm");
             }
         }
     }
