@@ -28,6 +28,8 @@ fn main() {
 
     // create elevator_connection object
     let elev_num_floors = 4;
+    // use this if you want to run in a docker container
+    // let elevator_connection = e::Elevator::init("host.docker.internal:15657", elev_num_floors).expect("couldn't create elevator connection");
     let elevator_connection = e::Elevator::init("localhost:15657", elev_num_floors).expect("couldn't create elevator connection");
 
     info!("Spawning threads.");
