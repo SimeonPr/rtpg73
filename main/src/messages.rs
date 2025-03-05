@@ -1,22 +1,16 @@
-use std::collections::HashMap;
-
 use serde::{Serialize, Deserialize};
-use bincode;
 use driver_rust::elevio;
 use crate::manager;
-use crate::config;
+use crate::fsm;
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Manager {
     Ping,
-    HeartBeat(u8, manager::ElevatorNetworkState, HashMap<u8, [[manager::RequestState; 2]; config::FLOOR_COUNT]>)
+    HeartBeat(manager::WorldView),
+    ElevatorState(fsm::Dirn, fsm::ElevatorBehaviour, i8)
 }
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Network {
-    Ping,
-    HeartBeat(manager::WorldView)
-}
+
 #[derive(Debug)]
 pub enum Controller {
     Ping,
-    Request(elevio::poll::CallButton)
+    Requests(fsm::ControllerRequests)
 }

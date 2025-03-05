@@ -35,7 +35,8 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
     }
     if elevator_connection.floor_sensor().is_none() {
         elevator_state.fsm_on_init_between_floors();
-    }
+    } 
+
 
     loop {
         debug!("Waiting for input.");
@@ -46,14 +47,14 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
                     messages::Controller::Ping => {
                         info!("Received ping");
                     },
-                    messages::Controller::Request(call_button) => {
-                        elevator_state.fsm_on_request_button_press(call_button.floor as i8, call_button.call);
+                    messages::Controller::Requests(requests) => {
+                        elevator_state.fsm_on_new_requests(requests);
                     }
                 }
             },
             recv(floor_sensor_rx) -> a => {
                 let floor_sensor = a.unwrap();
-                elevator_state.fsm_on_floor_arrival(floor_sensor as i8);
+                elevator_state.fsm_on_floor_arrival(floor_sensor as i8, &manager_tx);
             },
             recv(stop_button_rx) -> a => {
                 let _stop_button = a.unwrap();

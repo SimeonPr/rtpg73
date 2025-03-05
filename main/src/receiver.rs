@@ -19,12 +19,7 @@ pub fn run(manager_tx: cbc::Sender<messages::Manager>) {
         debug!("Ready for input...");
         let (_, _) = socket.recv_from(&mut buf).unwrap();
         // Deserialize the binary data back to a struct
-        let deserialized: messages::Network = bincode::deserialize(&buf).unwrap();
-        let manager_msg: messages::Manager = network_to_manager(&deserialized);
-        manager_tx.send(manager_msg).unwrap();
+        let deserialized: messages::Manager = bincode::deserialize(&buf).unwrap();
+        manager_tx.send(deserialized).unwrap();
     }
-}
-
-fn network_to_manager(net_msg: &messages::Network) -> messages::Manager {
-    messages::Manager::Ping
 }

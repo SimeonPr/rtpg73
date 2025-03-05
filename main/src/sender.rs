@@ -8,7 +8,7 @@ use crate::messages;
 use serde::{Serialize, Deserialize};
 use bincode;
 
-pub fn run(rx: cbc::Receiver<messages::Network>) {
+pub fn run(rx: cbc::Receiver<messages::Manager>) {
     debug!("Sender up and running...");
     let addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
     let destination_addr: SocketAddr = "0.0.0.0:4567".parse().unwrap();
