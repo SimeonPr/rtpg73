@@ -5,7 +5,6 @@ use crossbeam_channel as cbc;
 use driver_rust::elevio;
 use driver_rust::elevio::elev as e;
 use log::info;
-use manager::{RequestState, WorldView};
 
 mod messages;
 mod manager;
@@ -13,6 +12,7 @@ mod controller;
 mod sender;
 mod receiver;
 mod alarm;
+mod lights;
 mod fsm;
 mod config;
 use std::env;
@@ -46,6 +46,7 @@ fn main() {
     info!("Creating channels.");
     let (manager_tx, manager_rx) = cbc::unbounded::<messages::Manager>();
     let (controller_tx, controller_rx) = cbc::unbounded::<messages::Controller>();
+    let (lights_tx, lights_rx) = cbc::unbounded::<messages::Controller>();
     let (sender_tx, sender_rx) = cbc::unbounded::<messages::Manager>();
     let (alarm_tx, alarm_rx) = cbc::unbounded::<u8>();
     let (call_button_tx, call_button_rx) = cbc::unbounded::<elevio::poll::CallButton>();
@@ -59,7 +60,19 @@ fn main() {
     let sender_tx_clone = sender_tx.clone();
     let controller_tx_clone = controller_tx.clone();
     let alarm_rx_clone = alarm_rx.clone();
-    let m = spawn(move || manager::run(id.unwrap(), manager_rx, sender_tx_clone, controller_tx_clone, call_button_rx, alarm_rx_clone));
+    let lights_tx_clone = lights_tx.clone();
+    let m = spawn(move || manager::run(
+        id.unwrap(),
+        manager_rx,
+        sender_tx_clone,
+        controller_tx_clone,
+        lights_tx_clone,
+        call_button_rx,
+        alarm_rx_clone));
+    // spawn lights handler
+    let lights_rx_clone = lights_rx.clone();
+    let elev = elevator_connection.clone();
+    let l = spawn(move || lights::run(lights_rx_clone, elev));
     // spawn controller
     let manager_tx_clone = manager_tx.clone();
     let elev = elevator_connection.clone();
@@ -74,25 +87,26 @@ fn main() {
     let elev = elevator_connection.clone();
     let b = spawn(move || elevio::poll::call_buttons(elev, call_button_tx, poll_period));
     // spawn alarm
-    let timeout = Duration::from_secs(10);
+    let timeout = Duration::from_secs(1);
     let alarm_tx_clone = alarm_tx.clone();
     let a = spawn(move || alarm::run(alarm_tx_clone, timeout));
 
 
     // Test Block
-    let mut init_requests = [[manager::RequestState::None;3]; config::FLOOR_COUNT];
-    init_requests[0][2] = RequestState::Unconfirmed;
-    let wv = WorldView::init_with_requests(5, init_requests);
-    manager_tx.send(messages::Manager::HeartBeat(wv)).unwrap();
+    // let mut init_requests = [[manager::RequestState::None;3]; config::FLOOR_COUNT];
+    // init_requests[0][2] = RequestState::Unconfirmed;
+    // let wv = WorldView::init_with_requests(5, init_requests);
+    // manager_tx.send(messages::Manager::HeartBeat(wv)).unwrap();
 
-    let mut init_requests = [[manager::RequestState::None;3]; config::FLOOR_COUNT];
-    init_requests[0][2] = RequestState::Confirmed;
-    let wv = WorldView::init_with_requests(5, init_requests);
-    manager_tx.send(messages::Manager::HeartBeat(wv)).unwrap();
+    // let mut init_requests = [[manager::RequestState::None;3]; config::FLOOR_COUNT];
+    // init_requests[0][2] = RequestState::Confirmed;
+    // let wv = WorldView::init_with_requests(5, init_requests);
+    // manager_tx.send(messages::Manager::HeartBeat(wv)).unwrap();
 
 
     
     let _ = m.join();
+    let _ = l.join();
     let _ = c.join();
     let _ = s.join();
     let _ = r.join();

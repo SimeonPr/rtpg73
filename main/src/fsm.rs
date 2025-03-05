@@ -61,7 +61,7 @@ impl ElevatorState {
             obstruction: false
         }
     }
-    pub fn fsm_on_new_requests(&mut self, requests: ControllerRequests) {
+    pub fn fsm_on_new_requests(&mut self, requests: ControllerRequests, manager_tx: &Sender<messages::Manager>) {
         self.requests = requests;
         match self.behaviour {
              ElevatorBehaviour::Idle => {
@@ -73,7 +73,7 @@ impl ElevatorState {
                     ElevatorBehaviour::DoorOpen => {
                         self.connection.door_light(true);
                         self.start_time_out_thread();
-                        self.requests_clear_at_current_floor();
+                        self.requests_clear_at_current_floor(&manager_tx);
                     },
                     ElevatorBehaviour::Moving => {
                         self.connection.motor_direction(self.dirn as u8);
@@ -91,42 +91,42 @@ impl ElevatorState {
         self.behaviour = ElevatorBehaviour::Moving;
     }
     
-    pub fn fsm_on_request_button_press(&mut self, floor: i8, call: u8) {
-        trace!("fsm_on_request_button_press");
-        match self.behaviour {
-            ElevatorBehaviour::DoorOpen => {
-                if self.requests_should_clear_immediately(floor, call) {
-                    self.start_time_out_thread();
-                } else {
-                    self.requests[floor as usize][call as usize] = true;
-                }
-            },
-            ElevatorBehaviour::Moving => {
-                self.requests[floor as usize][call as usize] = true;
-            },
-            ElevatorBehaviour::Idle => {
-                self.requests[floor as usize][call as usize] = true;
-                let direction_behavior_pair = self.requests_choose_direction();
-                self.dirn = direction_behavior_pair.dirn;
-                self.behaviour = direction_behavior_pair.behavior;
-                match self.behaviour {
-                    ElevatorBehaviour::Idle => {},
-                    ElevatorBehaviour::DoorOpen => {
-                        self.connection.door_light(true);
-                        self.start_time_out_thread();
-                        self.requests_clear_at_current_floor();
-                    },
-                    ElevatorBehaviour::Moving => {
-                        self.connection.motor_direction(self.dirn as u8);
-                    }
-                };
-            }
-        };
+    // pub fn fsm_on_request_button_press(&mut self, floor: i8, call: u8) {
+    //     trace!("fsm_on_request_button_press");
+    //     match self.behaviour {
+    //         ElevatorBehaviour::DoorOpen => {
+    //             if self.requests_should_clear_immediately(floor, call) {
+    //                 self.start_time_out_thread();
+    //             } else {
+    //                 self.requests[floor as usize][call as usize] = true;
+    //             }
+    //         },
+    //         ElevatorBehaviour::Moving => {
+    //             self.requests[floor as usize][call as usize] = true;
+    //         },
+    //         ElevatorBehaviour::Idle => {
+    //             self.requests[floor as usize][call as usize] = true;
+    //             let direction_behavior_pair = self.requests_choose_direction();
+    //             self.dirn = direction_behavior_pair.dirn;
+    //             self.behaviour = direction_behavior_pair.behavior;
+    //             match self.behaviour {
+    //                 ElevatorBehaviour::Idle => {},
+    //                 ElevatorBehaviour::DoorOpen => {
+    //                     self.connection.door_light(true);
+    //                     self.start_time_out_thread();
+    //                     self.requests_clear_at_current_floor();
+    //                 },
+    //                 ElevatorBehaviour::Moving => {
+    //                     self.connection.motor_direction(self.dirn as u8);
+    //                 }
+    //             };
+    //         }
+    //     };
         
-        self.set_all_lights();
-    }
+    //     self.set_all_lights();
+    // }
 
-    pub fn fsm_on_door_time_out(&mut self) {
+    pub fn fsm_on_door_time_out(&mut self, manager_tx: &Sender<messages::Manager>) {
         trace!("fsm_on_door_time_out");
         self.no_of_timer_threads -= 1;
         if self.no_of_timer_threads > 0 {return;}
@@ -143,8 +143,7 @@ impl ElevatorState {
                 match self.behaviour {
                     ElevatorBehaviour::DoorOpen => {
                         self.start_time_out_thread();
-                        self.requests_clear_at_current_floor();
-                        self.set_all_lights();
+                        self.requests_clear_at_current_floor(&manager_tx);
                     },
                     ElevatorBehaviour::Moving | ElevatorBehaviour::Idle => {
                         self.connection.door_light(false);
@@ -169,7 +168,7 @@ impl ElevatorState {
                 if self.requests_should_stop() {
                     self.connection.motor_direction(Dirn::Stop as u8);
                     self.connection.door_light(true);
-                    self.requests_clear_at_current_floor();
+                    self.requests_clear_at_current_floor(&manager_tx);
                     self.start_time_out_thread();
                     self.set_all_lights();
                     self.behaviour = ElevatorBehaviour::DoorOpen;
@@ -246,27 +245,36 @@ impl ElevatorState {
         }
     }
     
-    fn requests_clear_at_current_floor(&mut self) {
+    fn requests_clear_at_current_floor(&mut self, manager_tx: &Sender<messages::Manager>) {
         trace!("requests_clear_at_current_floor");
+        let mut should_clear = [false; 3];
         self.requests[self.floor as usize][Button::Cab as usize] = false;
+        should_clear[Button::Cab as usize] = true;
         match self.dirn {
             Dirn::Up => {
                 if !self.requests_above() && (self.requests[self.floor as usize][Button::HallUp as usize] == false) {
                     self.requests[self.floor as usize][Button::HallDown as usize] = false;
+                    should_clear[Button::HallDown as usize] = true;
                 }
                 self.requests[self.floor as usize][Button::HallUp as usize] = false;
+                should_clear[Button::HallUp as usize] = true;
             },
             Dirn::Down => {
                 if !self.requests_below() && (self.requests[self.floor as usize][Button::HallDown as usize] == false) {
                     self.requests[self.floor as usize][Button::HallUp as usize] = false;
+                    should_clear[Button::HallUp as usize] = true;
                 }
                 self.requests[self.floor as usize][Button::HallDown as usize] = false;
+                should_clear[Button::HallDown as usize] = true;
             },
             Dirn::Stop => {
-               self.requests[self.floor as usize][Button::HallUp as usize] = false;
-               self.requests[self.floor as usize][Button::HallDown as usize] = false;
+                self.requests[self.floor as usize][Button::HallUp as usize] = false;
+                self.requests[self.floor as usize][Button::HallDown as usize] = false;
+                should_clear[Button::HallUp as usize] = true;
+                should_clear[Button::HallDown as usize] = true;
             }
         }
+        manager_tx.send(messages::Manager::ClearRequest(self.floor as usize, should_clear)).unwrap();
     }
     
     fn requests_here(&self) -> bool {

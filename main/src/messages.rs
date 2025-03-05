@@ -6,7 +6,8 @@ use crate::fsm;
 pub enum Manager {
     Ping,
     HeartBeat(manager::WorldView),
-    ElevatorState(fsm::Dirn, fsm::ElevatorBehaviour, i8)
+    ElevatorState(fsm::Dirn, fsm::ElevatorBehaviour, i8),
+    ClearRequest(usize, [bool; 3]) //floor 
 }
 
 #[derive(Debug)]

@@ -120,15 +120,13 @@ impl WorldView {
             elevators
         }
     }
-
+    
     pub fn handle_foreign_world_view(
         &mut self,
         foreign_world_view: WorldView,
         controller_tx: &cbc::Sender<messages::Controller>,
         sender_tx: &cbc::Sender<messages::Manager>
     ) {
-        if foreign_world_view.id == self.id {return;}
-
         let current_time = SystemTime::now();
 
         let foreign_id = foreign_world_view.get_id();
@@ -178,7 +176,16 @@ impl WorldView {
             }
         }
 
-        // somehow merge the different states of responsive elevators into a new state
+        self.merge();
+        // notify relevant subsystems
+        let world_view_clone = self.clone();
+        sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).unwrap();
+        let manager_reqs: ManagerRequests = self.elevators.get(&self.id).unwrap().requests;
+        let controller_reqs = manager_to_controller_requests(&manager_reqs);
+        controller_tx.send(messages::Controller::Requests(controller_reqs)).unwrap();
+    }
+
+    pub fn merge(&mut self) {
         let mut new_requests: ManagerRequests = [[RequestState::None; 3]; config::FLOOR_COUNT];
         for floor in 0..config::FLOOR_COUNT {
             for dir in 0..3 {
@@ -208,7 +215,7 @@ impl WorldView {
                         }
                     }
                 }
-
+                info!("Floor: {}, Dir: {}, {} {} {}", floor, dir, count[0], count[1], count[2]);
                 // all at barrier
                 if count[0] == 0 && count[2] == 0 { // [0 n 0]
                     new_requests[floor][dir] = RequestState::Confirmed;
@@ -217,16 +224,23 @@ impl WorldView {
                         RequestState::None => {
                             if count[1] > 0 {
                                 new_requests[floor][dir] = RequestState::Unconfirmed;
+                            } else {
+                                new_requests[floor][dir] = RequestState::None;
                             }
                         },
                         RequestState::Unconfirmed => {
                             if count[2] > 0 {
                                 new_requests[floor][dir] = RequestState::Confirmed;
+                            } else {
+                                new_requests[floor][dir] = RequestState::Unconfirmed;
                             }
                         },
                         RequestState::Confirmed => {
+                            info!("Confirmed");
                             if count[0] > 0 {
                                 new_requests[floor][dir] = RequestState::None;
+                            } else {
+                                new_requests[floor][dir] = RequestState::Confirmed;
                             }
                         }
                     }
@@ -237,14 +251,8 @@ impl WorldView {
 
         // replace old hall requests with new hall requests
         self.elevators.get_mut(&self.id).unwrap().requests = new_requests;
-
-        // notify relevant subsystems
-        let world_view_clone = self.clone();
-        sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).unwrap();
-        let manager_reqs: ManagerRequests = self.elevators.get(&self.id).unwrap().requests;
-        let controller_reqs = manager_to_controller_requests(&manager_reqs);
-        controller_tx.send(messages::Controller::Requests(controller_reqs)).unwrap();
     }
+
     pub fn handle_button_press(&mut self, button_press: &CallButton) {
         let new_value = match self.elevators.get(&self.id).unwrap().requests[button_press.floor as usize][button_press.call as usize] {
             RequestState::None => RequestState::Unconfirmed,
@@ -257,13 +265,22 @@ impl WorldView {
     }
 
     pub fn handle_elevator_state(&mut self, dirn: Dirn, behaviour: ElevatorBehaviour, floor: i8, sender_tx: &cbc::Sender<messages::Manager>) {
-        let mut state = self.elevators.get_mut(&self.id).unwrap().state;
-        state.dirn = dirn;
-        state.behaviour = behaviour;
-        state.current_floor = floor;
+        let elev = self.elevators.get_mut(&self.id).unwrap();
+        elev.state.dirn = dirn;
+        elev.state.behaviour = behaviour;
+        elev.state.current_floor = floor;
 
-        let world_view_clone = self.clone();
-        sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).unwrap();
+
+    }
+
+    pub fn handle_clear_request(&mut self, floor: usize, should_clear: &[bool; 3]) {
+        let elev = self.elevators.get_mut(&self.id).unwrap();
+        debug!("Clearing {:?}", &should_clear);
+        for i in 0..3 {
+            if should_clear[i] {
+                elev.requests[floor][i] = RequestState::None;
+            }
+        }
     }
     // Getters
     pub fn get_id(&self) -> u8 {
@@ -279,13 +296,15 @@ pub fn run(
     manager_rx: cbc::Receiver<messages::Manager>,
     sender_tx: cbc::Sender<messages::Manager>,
     controller_tx: cbc::Sender<messages::Controller>,
+    lights_tx: cbc::Sender<messages::Controller>,
     call_button_rx: cbc::Receiver<elevio::poll::CallButton>,
-    alarm_rx: cbc::Receiver<u8>,
+    alarm_rx: cbc::Receiver<u8>
 ) {
     debug!("Manager up and running...");
     let mut world_view = WorldView::init(id);
     loop {
         debug!("Waiting for input...");
+        info!("Before: {:#?}", &world_view);
         cbc::select! {
             recv(manager_rx) -> a => {
                 let message = a.unwrap();
@@ -295,12 +314,32 @@ pub fn run(
                     },
                     messages::Manager::HeartBeat(foreign_world_view) => {
                         info!("Received HeartBeat from {}", foreign_world_view.get_id());
-                        debug!("Before: {:#?}", &world_view);
-                        world_view.handle_foreign_world_view(foreign_world_view, &controller_tx, &sender_tx);
-                        debug!("After: {:#?}", &world_view);
+                        if foreign_world_view.id != world_view.get_id() {
+                            world_view.handle_foreign_world_view(foreign_world_view, &controller_tx, &sender_tx);
+                        
+                            inform_everybody(
+                                &world_view,
+                                &sender_tx,
+                                &controller_tx,
+                                &lights_tx);
+                        }
                     },
                     messages::Manager::ElevatorState(dirn, behaviour, floor) => {
                         world_view.handle_elevator_state(dirn, behaviour, floor, &sender_tx);
+                        
+                        inform_everybody(
+                            &world_view,
+                            &sender_tx,
+                            &controller_tx,
+                            &lights_tx);
+                    },
+                    messages::Manager::ClearRequest(floor, should_clear) => {
+                        world_view.handle_clear_request(floor, &should_clear);
+                        inform_everybody(
+                            &world_view,
+                            &sender_tx,
+                            &controller_tx,
+                            &lights_tx);
                     }
                 }
             },
@@ -308,18 +347,47 @@ pub fn run(
                 let button_press = a.unwrap();
                 info!("Received Button Press");
                 debug!("{:?}", button_press);
-                debug!("Before: {:#?}", world_view.clone());
+                
                 world_view.handle_button_press(&button_press);
-                debug!("After: {:#?}", world_view.clone());
-                let manager_reqs: ManagerRequests = world_view.get_elevators().get(&world_view.get_id()).unwrap().requests;
-                let controller_reqs = manager_to_controller_requests(&manager_reqs);
-                controller_tx.send(messages::Controller::Requests(controller_reqs)).unwrap();
+
+                inform_everybody(
+                    &world_view,
+                    &sender_tx,
+                    &controller_tx,
+                    &lights_tx);
+
             },
             recv(alarm_rx) -> _a => {
                 info!("Received Alarm");
-                let world_view_clone = world_view.clone();
-                sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).unwrap();
+
+                world_view.merge();
+
+                inform_everybody(
+                    &world_view,
+                    &sender_tx,
+                    &controller_tx,
+                    &lights_tx);
             }
         }
+        info!("After: {:#?}", &world_view);
     }
+}
+
+
+fn inform_everybody(
+    world_view: &WorldView,
+    sender_tx: &cbc::Sender<messages::Manager>,
+    controller_tx: &cbc::Sender<messages::Controller>,
+    lights_tx: &cbc::Sender<messages::Controller>
+) {
+    let manager_reqs: ManagerRequests = world_view.get_elevators().get(&world_view.get_id()).unwrap().requests;
+    
+    let world_view_clone = world_view.clone();
+    sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).unwrap();
+    
+    let controller_reqs = manager_to_controller_requests(&manager_reqs);
+    controller_tx.send(messages::Controller::Requests(controller_reqs)).unwrap();
+    
+    let lights_reqs = manager_to_controller_requests(&manager_reqs);
+    lights_tx.send(messages::Controller::Requests(controller_reqs)).unwrap();
 }

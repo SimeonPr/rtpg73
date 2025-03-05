@@ -5,6 +5,7 @@ use log::{debug, info};
 
 use crate::messages;
 use crate::fsm;
+use std::thread;
 use std::thread::spawn;
 use std::time::Duration;
 
@@ -37,9 +38,11 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
         elevator_state.fsm_on_init_between_floors();
     } 
 
-
+    while elevator_connection.floor_sensor().is_none() {}
+    
     loop {
         debug!("Waiting for input.");
+        debug!("Before: {:?}", &elevator_state);
         cbc::select! {
             recv(controller_rx) -> a => {
                 let message = a.unwrap();
@@ -48,7 +51,7 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
                         info!("Received ping");
                     },
                     messages::Controller::Requests(requests) => {
-                        elevator_state.fsm_on_new_requests(requests);
+                        elevator_state.fsm_on_new_requests(requests, &manager_tx);
                     }
                 }
             },
@@ -66,9 +69,10 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
             },
             recv(timer_rx) -> a => {
                 let _time_out = a.unwrap();
-                elevator_state.fsm_on_door_time_out();
+                elevator_state.fsm_on_door_time_out(&manager_tx);
             }
         };
+        debug!("After: {:?}", &elevator_state);
     }
 }
 
