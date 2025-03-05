@@ -28,15 +28,15 @@ pub struct ElevatorNetworkState {
     current_floor: i8,
 }
 impl ElevatorNetworkState {
-    pub fn get_dirn(&self) -> fsm::Dirn {
-        self.dirn
-    }
-    pub fn get_behaviour(&self) -> fsm::ElevatorBehaviour {
-        self.behaviour
-    }
-    pub fn get_current_floor(&self) -> i8 {
-        self.current_floor
-    }
+    // pub fn get_dirn(&self) -> fsm::Dirn {
+    //     self.dirn
+    // }
+    // pub fn get_behaviour(&self) -> fsm::ElevatorBehaviour {
+    //     self.behaviour
+    // }
+    // pub fn get_current_floor(&self) -> i8 {
+    //     self.current_floor
+    // }
 }
 pub type ManagerRequests = [[RequestState; 3]; config::FLOOR_COUNT];
 pub fn manager_to_controller_requests(manager_reqs: &ManagerRequests) -> ControllerRequests {
@@ -58,25 +58,9 @@ pub struct Elevator {
     requests: ManagerRequests
 }
 impl Elevator {
-    pub fn get_last_received(&self) -> SystemTime {
-        self.last_received
-    }
-    pub fn get_state(&self) -> ElevatorNetworkState {
-        self.state
-    }
-    pub fn get_requests(&self) -> ManagerRequests {
-        self.requests
-    }
     pub fn set_last_received(&mut self, new_val: SystemTime) {
         self.last_received = new_val;
     }
-    pub fn set_state(&mut self, new_val: ElevatorNetworkState) {
-        self.state = new_val;
-    }
-    pub fn set_requests(&mut self, new: ManagerRequests) {
-        self.requests = new;
-    }
-
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WorldView {
@@ -85,23 +69,23 @@ pub struct WorldView {
 }
 
 impl WorldView {
-    pub fn init_with_requests(id: u8, init_requests: ManagerRequests) -> WorldView {
-        let mut elevators = HashMap::new();
-        let our_elevator = Elevator {
-            last_received: SystemTime::now(),
-            state: ElevatorNetworkState {
-                dirn: fsm::Dirn::Stop,
-                behaviour: fsm::ElevatorBehaviour::Idle,
-                current_floor: -1,
-            },
-            requests: init_requests
-        };
-        elevators.insert(id, our_elevator);
-        WorldView {
-            id,
-            elevators
-        }
-    }
+    // pub fn init_with_requests(id: u8, init_requests: ManagerRequests) -> WorldView {
+    //     let mut elevators = HashMap::new();
+    //     let our_elevator = Elevator {
+    //         last_received: SystemTime::now(),
+    //         state: ElevatorNetworkState {
+    //             dirn: fsm::Dirn::Stop,
+    //             behaviour: fsm::ElevatorBehaviour::Idle,
+    //             current_floor: -1,
+    //         },
+    //         requests: init_requests
+    //     };
+    //     elevators.insert(id, our_elevator);
+    //     WorldView {
+    //         id,
+    //         elevators
+    //     }
+    // }
     pub fn init(id: u8) -> WorldView {
         let mut elevators = HashMap::new();
         let requests = [[RequestState::None; 3]; config::FLOOR_COUNT];
@@ -123,9 +107,7 @@ impl WorldView {
     
     pub fn handle_foreign_world_view(
         &mut self,
-        foreign_world_view: WorldView,
-        controller_tx: &cbc::Sender<messages::Controller>,
-        sender_tx: &cbc::Sender<messages::Manager>
+        foreign_world_view: WorldView
     ) {
         let current_time = SystemTime::now();
 
@@ -177,12 +159,6 @@ impl WorldView {
         }
 
         self.merge();
-        // notify relevant subsystems
-        let world_view_clone = self.clone();
-        sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).unwrap();
-        let manager_reqs: ManagerRequests = self.elevators.get(&self.id).unwrap().requests;
-        let controller_reqs = manager_to_controller_requests(&manager_reqs);
-        controller_tx.send(messages::Controller::Requests(controller_reqs)).unwrap();
     }
 
     pub fn merge(&mut self) {
@@ -215,7 +191,6 @@ impl WorldView {
                         }
                     }
                 }
-                info!("Floor: {}, Dir: {}, {} {} {}", floor, dir, count[0], count[1], count[2]);
                 // all at barrier
                 if count[0] == 0 && count[2] == 0 { // [0 n 0]
                     new_requests[floor][dir] = RequestState::Confirmed;
@@ -236,7 +211,6 @@ impl WorldView {
                             }
                         },
                         RequestState::Confirmed => {
-                            info!("Confirmed");
                             if count[0] > 0 {
                                 new_requests[floor][dir] = RequestState::None;
                             } else {
@@ -264,13 +238,11 @@ impl WorldView {
         //notify relevant subsystems
     }
 
-    pub fn handle_elevator_state(&mut self, dirn: Dirn, behaviour: ElevatorBehaviour, floor: i8, sender_tx: &cbc::Sender<messages::Manager>) {
+    pub fn handle_elevator_state(&mut self, dirn: Dirn, behaviour: ElevatorBehaviour, floor: i8) {
         let elev = self.elevators.get_mut(&self.id).unwrap();
         elev.state.dirn = dirn;
         elev.state.behaviour = behaviour;
         elev.state.current_floor = floor;
-
-
     }
 
     pub fn handle_clear_request(&mut self, floor: usize, should_clear: &[bool; 3]) {
@@ -300,11 +272,11 @@ pub fn run(
     call_button_rx: cbc::Receiver<elevio::poll::CallButton>,
     alarm_rx: cbc::Receiver<u8>
 ) {
-    debug!("Manager up and running...");
+    info!("Manager up and running...");
     let mut world_view = WorldView::init(id);
     loop {
         debug!("Waiting for input...");
-        info!("Before: {:#?}", &world_view);
+        debug!("Before: {:#?}", &world_view);
         cbc::select! {
             recv(manager_rx) -> a => {
                 let message = a.unwrap();
@@ -313,9 +285,11 @@ pub fn run(
                         info!("Received Ping");
                     },
                     messages::Manager::HeartBeat(foreign_world_view) => {
-                        info!("Received HeartBeat from {}", foreign_world_view.get_id());
+
                         if foreign_world_view.id != world_view.get_id() {
-                            world_view.handle_foreign_world_view(foreign_world_view, &controller_tx, &sender_tx);
+                            info!("Received HeartBeat from {}", foreign_world_view.get_id());
+
+                            world_view.handle_foreign_world_view(foreign_world_view);
                         
                             inform_everybody(
                                 &world_view,
@@ -325,7 +299,9 @@ pub fn run(
                         }
                     },
                     messages::Manager::ElevatorState(dirn, behaviour, floor) => {
-                        world_view.handle_elevator_state(dirn, behaviour, floor, &sender_tx);
+                        info!("Received ElevatorState");
+
+                        world_view.handle_elevator_state(dirn, behaviour, floor);
                         
                         inform_everybody(
                             &world_view,
@@ -334,7 +310,10 @@ pub fn run(
                             &lights_tx);
                     },
                     messages::Manager::ClearRequest(floor, should_clear) => {
+                        info!("Received ClearRequest");
+
                         world_view.handle_clear_request(floor, &should_clear);
+
                         inform_everybody(
                             &world_view,
                             &sender_tx,
@@ -345,7 +324,7 @@ pub fn run(
             },
             recv(call_button_rx) -> a => {
                 let button_press = a.unwrap();
-                info!("Received Button Press");
+                info!("Received CallButton");
                 debug!("{:?}", button_press);
                 
                 world_view.handle_button_press(&button_press);
@@ -369,7 +348,7 @@ pub fn run(
                     &lights_tx);
             }
         }
-        info!("After: {:#?}", &world_view);
+        debug!("After: {:#?}", &world_view);
     }
 }
 
@@ -387,7 +366,5 @@ fn inform_everybody(
     
     let controller_reqs = manager_to_controller_requests(&manager_reqs);
     controller_tx.send(messages::Controller::Requests(controller_reqs)).unwrap();
-    
-    let lights_reqs = manager_to_controller_requests(&manager_reqs);
     lights_tx.send(messages::Controller::Requests(controller_reqs)).unwrap();
 }

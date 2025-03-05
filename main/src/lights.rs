@@ -11,12 +11,9 @@ pub fn run(lights_rx: cbc::Receiver<messages::Controller>, elev_conn: e::Elevato
             recv(lights_rx) -> a => {
                 match a.unwrap() {
                     messages::Controller::Requests(requests) => {
-                        info!("Received requests");
+                        info!("Received Requests");
                         debug!("{:?}", &requests);
                         set_all_lights(&elev_conn, &requests);
-                    },
-                    _ => {
-                        info!("Received unsupported message type");
                     }
                 }
             }

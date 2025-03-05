@@ -1,5 +1,5 @@
 use core::time::Duration;
-use std::thread::{self, spawn};
+use std::thread::spawn;
 
 use crossbeam_channel as cbc;
 use driver_rust::elevio;
@@ -32,14 +32,13 @@ fn main() {
         }
     }
 
-    match id {
-        Some(id) => println!("ID: {}", id),
+    let id = match id {
+        Some(id) => id,
         _ => {
-            println!("Using default id 0");
-            id = Some(0);
-        },
-    }
-
+            0
+        }
+    };
+    info!("Running with ID {}", id);
     env_logger::init();
     info!("Booting application.");
     // create channels
@@ -62,7 +61,7 @@ fn main() {
     let alarm_rx_clone = alarm_rx.clone();
     let lights_tx_clone = lights_tx.clone();
     let m = spawn(move || manager::run(
-        id.unwrap(),
+        id,
         manager_rx,
         sender_tx_clone,
         controller_tx_clone,

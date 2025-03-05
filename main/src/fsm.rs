@@ -64,7 +64,7 @@ impl ElevatorState {
     pub fn fsm_on_new_requests(&mut self, requests: ControllerRequests, manager_tx: &Sender<messages::Manager>) {
         self.requests = requests;
         match self.behaviour {
-             ElevatorBehaviour::Idle => {
+            ElevatorBehaviour::Idle => {
                 let direction_behavior_pair = self.requests_choose_direction();
                 self.dirn = direction_behavior_pair.dirn;
                 self.behaviour = direction_behavior_pair.behavior;
@@ -79,7 +79,7 @@ impl ElevatorState {
                         self.connection.motor_direction(self.dirn as u8);
                     }
                 };
-            }
+            },
             _ => ()
         }
     }
@@ -91,41 +91,6 @@ impl ElevatorState {
         self.behaviour = ElevatorBehaviour::Moving;
     }
     
-    // pub fn fsm_on_request_button_press(&mut self, floor: i8, call: u8) {
-    //     trace!("fsm_on_request_button_press");
-    //     match self.behaviour {
-    //         ElevatorBehaviour::DoorOpen => {
-    //             if self.requests_should_clear_immediately(floor, call) {
-    //                 self.start_time_out_thread();
-    //             } else {
-    //                 self.requests[floor as usize][call as usize] = true;
-    //             }
-    //         },
-    //         ElevatorBehaviour::Moving => {
-    //             self.requests[floor as usize][call as usize] = true;
-    //         },
-    //         ElevatorBehaviour::Idle => {
-    //             self.requests[floor as usize][call as usize] = true;
-    //             let direction_behavior_pair = self.requests_choose_direction();
-    //             self.dirn = direction_behavior_pair.dirn;
-    //             self.behaviour = direction_behavior_pair.behavior;
-    //             match self.behaviour {
-    //                 ElevatorBehaviour::Idle => {},
-    //                 ElevatorBehaviour::DoorOpen => {
-    //                     self.connection.door_light(true);
-    //                     self.start_time_out_thread();
-    //                     self.requests_clear_at_current_floor();
-    //                 },
-    //                 ElevatorBehaviour::Moving => {
-    //                     self.connection.motor_direction(self.dirn as u8);
-    //                 }
-    //             };
-    //         }
-    //     };
-        
-    //     self.set_all_lights();
-    // }
-
     pub fn fsm_on_door_time_out(&mut self, manager_tx: &Sender<messages::Manager>) {
         trace!("fsm_on_door_time_out");
         self.no_of_timer_threads -= 1;
@@ -191,10 +156,6 @@ impl ElevatorState {
             thread::sleep(Duration::from_secs(duration));
             timer_tx_clone.send(true).unwrap();
         });
-    }
-    fn requests_should_clear_immediately(&mut self, floor: i8, _call: u8) -> bool {
-        trace!("request_should_clear_immediately");
-         self.floor == floor
     }
     
     fn set_all_lights(&self) {

@@ -5,7 +5,6 @@ use crossbeam_channel as cbc;
 use log::{debug, info};
 
 use crate::messages;
-use serde::{Serialize, Deserialize};
 use bincode;
 
 pub fn run(rx: cbc::Receiver<messages::Manager>) {

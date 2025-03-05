@@ -1,22 +1,22 @@
 use crossbeam_channel as cbc;
 use driver_rust::elevio;
 use driver_rust::elevio::elev as e;
-use log::{debug, info};
+use log::debug;
+use log::info;
 
 use crate::messages;
 use crate::fsm;
-use std::thread;
 use std::thread::spawn;
 use std::time::Duration;
 
 pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::Sender<messages::Manager>, elevator_connection: e::Elevator) -> std::io::Result<()> {
-    debug!("Controller up and running.");
+    info!("Controller up and running.");
     let (timer_tx, timer_rx) = cbc::unbounded::<bool>();
     let mut elevator_state = fsm::ElevatorState::init_elevator(elevator_connection.clone(), timer_tx);
 
     let poll_period = Duration::from_millis(25);
 
-    debug!("Starting hardware monitors.");
+    info!("Starting hardware monitors.");
     let (floor_sensor_tx, floor_sensor_rx) = cbc::unbounded::<u8>();
     {
         let elevator = elevator_connection.clone();
@@ -47,15 +47,14 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
             recv(controller_rx) -> a => {
                 let message = a.unwrap();
                 match message {
-                    messages::Controller::Ping => {
-                        info!("Received ping");
-                    },
                     messages::Controller::Requests(requests) => {
+                        info!("Received Requests");
                         elevator_state.fsm_on_new_requests(requests, &manager_tx);
                     }
                 }
             },
             recv(floor_sensor_rx) -> a => {
+                info!("Received FloorSensor");
                 let floor_sensor = a.unwrap();
                 elevator_state.fsm_on_floor_arrival(floor_sensor as i8, &manager_tx);
             },
@@ -64,10 +63,12 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
                 elevator_state.fsm_on_stop_button_press();
             },
             recv(obstruction_rx) -> a => {
+                info!("Received Obstruction");
                 let obstruction = a.unwrap();
                 elevator_state.fsm_on_obstruction(obstruction);
             },
             recv(timer_rx) -> a => {
+                info!("Received Timeout");
                 let _time_out = a.unwrap();
                 elevator_state.fsm_on_door_time_out(&manager_tx);
             }

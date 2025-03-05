@@ -1,5 +1,4 @@
 use serde::{Serialize, Deserialize};
-use driver_rust::elevio;
 use crate::manager;
 use crate::fsm;
 #[derive(Debug, Serialize, Deserialize)]
@@ -12,6 +11,5 @@ pub enum Manager {
 
 #[derive(Debug)]
 pub enum Controller {
-    Ping,
     Requests(fsm::ControllerRequests)
 }
