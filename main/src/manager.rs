@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use core::time::Duration;
 use std::collections::HashMap;
 use std::time::SystemTime;
-
+use crate::cost.rs //new-------------------------------------------
 use crate::config;
 use crate::fsm;
 use crate::fsm::ControllerRequests;
@@ -55,7 +55,7 @@ pub fn manager_to_controller_requests(manager_reqs: &ManagerRequests) -> Control
 pub struct Elevator {
     last_received: SystemTime,
     state: ElevatorNetworkState,
-    requests: ManagerRequests
+    requests: ManagerRequests  
 }
 impl Elevator {
     pub fn set_last_received(&mut self, new_val: SystemTime) {
@@ -269,7 +269,7 @@ pub fn run(
     sender_tx: cbc::Sender<messages::Manager>,
     controller_tx: cbc::Sender<messages::Controller>,
     lights_tx: cbc::Sender<messages::Controller>,
-    call_button_rx: cbc::Receiver<elevio::poll::CallButton>,
+    call_button_rx: cbc::Rworld_view.get_id(eceiver<elevio::poll::CallButton>,
     alarm_rx: cbc::Receiver<u8>
 ) {
     info!("Manager up and running...");
@@ -350,7 +350,7 @@ pub fn run(
         }
         debug!("After: {:#?}", &world_view);
     }
-}
+})
 
 
 fn inform_everybody(
@@ -363,8 +363,9 @@ fn inform_everybody(
     
     let world_view_clone = world_view.clone();
     sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).unwrap();
-    
-    let controller_reqs = manager_to_controller_requests(&manager_reqs);
+    let all_reqs = manager_to_controller_requests(&manager_reqs);
+    let new_reqs = all_reqs.clone();
+    let controller_reqs = elevator_algorythm(world_view_clone, new_reqs);
     controller_tx.send(messages::Controller::Requests(controller_reqs)).unwrap();
-    lights_tx.send(messages::Controller::Requests(controller_reqs)).unwrap();
+    lights_tx.send(messages::Controller::Requests(all_reqs)).unwrap();
 }
