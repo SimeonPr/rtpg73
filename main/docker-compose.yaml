@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  elevator1:
+    build: .
+    environment:
+      - ELEVATOR_PORT=15657
+      - CONTAINER_ID=0
+    expose:
+      - "4567"
+    networks:
+      - elevator_network
+
+  elevator2:
+    build: .
+    environment:
+      - ELEVATOR_PORT=15658
+      - CONTAINER_ID=1
+    expose:
+      - "4567"
+    networks:
+      - elevator_network
+
+  elevator3:
+    build: .
+    environment:
+      - ELEVATOR_PORT=15659
+      - CONTAINER_ID=2
+    expose:
+      - "4567"
+    networks:
+      - elevator_network
+
+networks:
+  elevator_network:
+    driver: bridge
