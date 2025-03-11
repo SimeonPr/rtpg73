@@ -52,11 +52,10 @@ fn main() {
 
     // create elevator_connection object
     let elev_num_floors = 4;
-    // use this if you want to run in a docker container
-    let default_port = "15657".to_string();
-    let port = env::var("ELEVATOR_PORT").unwrap_or(default_port);
-    let address = format!("host.docker.internal:{}", port);
-    // let address = format!("127.0.0.1:15657");
+    let address = match env::var("ELEVATOR_PORT") {
+        Ok(port) => format!("host.docker.internal:{}", port),
+        Err(_) => format!("127.0.0.1:15657")
+    };
 
     let elevator_connection = e::Elevator::init(&address, elev_num_floors).expect("couldn't create elevator connection");
 
