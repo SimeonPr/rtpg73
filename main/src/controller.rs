@@ -41,39 +41,36 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
     while elevator_connection.floor_sensor().is_none() {}
     
     loop {
-        debug!("Waiting for input.");
-        debug!("Before: {:?}", &elevator_state);
         cbc::select! {
             recv(controller_rx) -> a => {
                 let message = a.unwrap();
                 match message {
                     messages::Controller::Requests(requests) => {
-                        info!("Received Requests");
+                        debug!("Received Requests");
                         elevator_state.fsm_on_new_requests(requests, &manager_tx);
                     }
                 }
             },
             recv(floor_sensor_rx) -> a => {
-                info!("Received FloorSensor");
+                debug!("Received FloorSensor");
                 let floor_sensor = a.unwrap();
                 elevator_state.fsm_on_floor_arrival(floor_sensor as i8, &manager_tx);
             },
             recv(stop_button_rx) -> a => {
+                debug!("Received StopButton");
                 let _stop_button = a.unwrap();
                 elevator_state.fsm_on_stop_button_press();
             },
             recv(obstruction_rx) -> a => {
-                info!("Received Obstruction");
+                debug!("Received Obstruction");
                 let obstruction = a.unwrap();
                 elevator_state.fsm_on_obstruction(obstruction);
             },
             recv(timer_rx) -> a => {
-                info!("Received Timeout");
                 let _time_out = a.unwrap();
                 elevator_state.fsm_on_door_time_out(&manager_tx);
             }
         };
-        debug!("After: {:?}", &elevator_state);
     }
 }
 
