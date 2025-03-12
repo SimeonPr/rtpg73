@@ -1,5 +1,5 @@
 use driver_rust::elevio::elev::Elevator;
-use log::trace;
+use log::{info, trace};
 use serde::{Serialize, Deserialize};
 
 use std::thread;
@@ -21,7 +21,7 @@ pub enum Dirn {
     Up = 1
 }
 #[derive(Debug)]
-enum Button {
+pub enum Button {
     HallUp,
     HallDown,
     Cab
@@ -99,6 +99,7 @@ impl ElevatorState {
             self.start_time_out_thread();
             return;
         }
+        info!("Handling LastTimeOut");
         match self.behaviour {
             ElevatorBehaviour::DoorOpen => {
                 let pair: DirectionBehaviourPair = self.requests_choose_direction();
