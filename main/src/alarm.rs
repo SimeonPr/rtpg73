@@ -8,6 +8,6 @@ pub fn run(alarm_tx: cbc::Sender<u8>, timeout: Duration) {
         debug!("Going to sleep");
         thread::sleep(timeout);
         debug!("Sending alarm");
-        alarm_tx.send(0).unwrap();
+        alarm_tx.send(0).expect("send to alarm failed");
     }
 }

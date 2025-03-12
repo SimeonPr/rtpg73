@@ -144,14 +144,14 @@ impl WorldView {
         for key in foreign_world_view.elevators.keys() {
             if !self.elevators.contains_key(key) {
                 info!("NewElevator(id: {})", key);
-                let u = foreign_world_view.elevators.get(&key).unwrap();
+                let u = foreign_world_view.elevators.get(&key).expect("key should have been available");
                 self.elevators.insert(*key, u.clone());
             }
         }
 
         // update foreign elevators state + last_received
         if let Some(e) = foreign_elevators.get(&foreign_id) { 
-            let u = self.elevators.get_mut(&foreign_id).unwrap();
+            let u = self.elevators.get_mut(&foreign_id).expect("key should have been available");
             u.last_received = current_time;
             u.state = e.state;
         }
@@ -169,7 +169,7 @@ impl WorldView {
 
         // update cab requests
         for (id, foreign_elev) in foreign_elevators.iter() {
-            let own_elev = self.elevators.get_mut(&id).unwrap();
+            let own_elev = self.elevators.get_mut(&id).expect("key should have been available");
             for floor in 0..config::FLOOR_COUNT {
                 let res =  own_elev.cab_requests[floor].merge(&foreign_elev.cab_requests[floor], self.id);
                 if res {
@@ -238,7 +238,7 @@ impl WorldView {
                 }
             },
             2 => { // cab_request?
-                let own_elev = self.elevators.get_mut(&self.id).unwrap();
+                let own_elev = self.elevators.get_mut(&self.id).expect("key should have been available");
                 match own_elev.cab_requests[button_press.floor as usize].state {
                     RequestState::None => {
                         own_elev.cab_requests[button_press.floor as usize].set_to(RequestState::Unconfirmed, self.id);
@@ -253,7 +253,7 @@ impl WorldView {
     }
 
     pub fn handle_elevator_state(&mut self, dirn: Dirn, behaviour: ElevatorBehaviour, floor: i8) {
-        let elev = self.elevators.get_mut(&self.id).unwrap();
+        let elev = self.elevators.get_mut(&self.id).expect("key should have been available");
         elev.state.dirn = dirn;
         elev.state.behaviour = behaviour;
         elev.state.current_floor = floor;
@@ -261,7 +261,7 @@ impl WorldView {
 
     pub fn handle_clear_request(&mut self, floor: usize, should_clear: &[bool; 3]) {
         
-        let own_elev = self.elevators.get_mut(&self.id).unwrap();
+        let own_elev = self.elevators.get_mut(&self.id).expect("key should have been available");
         debug!("Clearing {:?}", &should_clear);
         for i in 0..2 {
             if should_clear[i] {
@@ -279,7 +279,7 @@ impl WorldView {
     pub fn get_alive_elevators(&self, timeout: u64) -> HashSet<u8> {
         let mut alive_elevators = HashSet::new();
         for (id, elev) in self.elevators.iter() {
-            if elev.last_received.elapsed().unwrap() > Duration::from_secs(timeout) && *id != self.id {continue;}
+            if elev.last_received.elapsed().expect("elapsed() failed") > Duration::from_secs(timeout) && *id != self.id {continue;}
             alive_elevators.insert(*id);
         }
         alive_elevators
@@ -293,7 +293,7 @@ impl WorldView {
 
     pub fn get_confirmed_requests(&self) -> [[bool; config::CALL_COUNT]; config::FLOOR_COUNT] {
         let mut requests: [[bool; config::CALL_COUNT]; config::FLOOR_COUNT] = [[false; config::CALL_COUNT]; config::FLOOR_COUNT];
-        let elev = self.elevators.get(&self.id).unwrap();
+        let elev = self.elevators.get(&self.id).expect("own ID not in elevators");
 
         
         for floor in 0..config::FLOOR_COUNT {
@@ -332,7 +332,7 @@ pub fn run(
         debug!("Current WorldView: {:#?}", &world_view);
         cbc::select! {
             recv(manager_rx) -> a => {
-                let message = a.unwrap();
+                let message = a.expect("couldn't get message");
                 match message {
                     messages::Manager::Ping => {
                         debug!("Received Ping");
@@ -375,7 +375,7 @@ pub fn run(
             },
             recv(call_button_rx) -> a => {
                 debug!("Received ButtonPress");
-                let button_press = a.unwrap();
+                let button_press = a.expect("couldn't get message");
                 
                 let updated = world_view.handle_button_press(&button_press);
                 if updated {
@@ -410,9 +410,9 @@ fn inform_everybody(
     lights_tx: &cbc::Sender<messages::Controller>
 ) {
     let world_view_clone = world_view.clone();
-    sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).unwrap();
+    sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).expect("send to sender failed");
     
     let controller_reqs = world_view.get_confirmed_requests();
-    controller_tx.send(messages::Controller::Requests(controller_reqs)).unwrap();
-    lights_tx.send(messages::Controller::Requests(controller_reqs)).unwrap();
+    controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
+    lights_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to lights failed");
 }

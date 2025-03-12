@@ -43,7 +43,7 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
     loop {
         cbc::select! {
             recv(controller_rx) -> a => {
-                let message = a.unwrap();
+                let message = a.expect("controller couldn't receive");
                 match message {
                     messages::Controller::Requests(requests) => {
                         debug!("Received Requests");
@@ -52,22 +52,22 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
                 }
             },
             recv(floor_sensor_rx) -> a => {
+                let floor_sensor = a.expect("floor_sensor couldn't receive");
                 debug!("Received FloorSensor");
-                let floor_sensor = a.unwrap();
                 elevator_state.fsm_on_floor_arrival(floor_sensor as i8, &manager_tx);
             },
             recv(stop_button_rx) -> a => {
                 debug!("Received StopButton");
-                let _stop_button = a.unwrap();
+                let _stop_button = a.expect("stop_button couldn't receive");
                 elevator_state.fsm_on_stop_button_press();
             },
             recv(obstruction_rx) -> a => {
                 debug!("Received Obstruction");
-                let obstruction = a.unwrap();
+                let obstruction = a.expect("obstruction couldn't receive");
                 elevator_state.fsm_on_obstruction(obstruction);
             },
             recv(timer_rx) -> a => {
-                let _time_out = a.unwrap();
+                let _time_out = a.expect("timer couldn't receive");
                 elevator_state.fsm_on_door_time_out(&manager_tx);
             }
         };

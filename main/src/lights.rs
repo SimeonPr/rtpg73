@@ -10,7 +10,7 @@ pub fn run(lights_rx: cbc::Receiver<messages::Controller>, elev_conn: e::Elevato
     loop {
         cbc::select! {
             recv(lights_rx) -> a => {
-                match a.unwrap() {
+                match a.expect("couldn't get message") {
                     messages::Controller::Requests(requests) => {
                         debug!("Received Requests");
                         set_all_lights(&elev_conn, &requests);

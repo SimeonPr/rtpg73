@@ -143,7 +143,7 @@ impl ElevatorState {
             _ => {},
         };
 
-        manager_tx.send(messages::Manager::ElevatorState(self.dirn, self.behaviour, self.floor)).unwrap();
+        manager_tx.send(messages::Manager::ElevatorState(self.dirn, self.behaviour, self.floor)).expect("couldn't send to manager");
     }
 
     pub fn fsm_on_stop_button_press(&mut self){}
@@ -155,7 +155,7 @@ impl ElevatorState {
         let duration = self.door_open_duration;
         thread::spawn(move || {
             thread::sleep(Duration::from_secs(duration));
-            timer_tx_clone.send(true).unwrap();
+            timer_tx_clone.send(true).expect("couldn't send to timer");
         });
     }
     
@@ -236,7 +236,7 @@ impl ElevatorState {
                 should_clear[Button::HallDown as usize] = true;
             }
         }
-        manager_tx.send(messages::Manager::ClearRequest(self.floor as usize, should_clear)).unwrap();
+        manager_tx.send(messages::Manager::ClearRequest(self.floor as usize, should_clear)).expect("couldn't send to manager");
     }
     
     fn requests_here(&self) -> bool {
