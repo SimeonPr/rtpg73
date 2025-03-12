@@ -1,5 +1,6 @@
 use crossbeam_channel as cbc;
-use log::{trace, debug, info};
+use log::debug;
+use log::trace;
 use crate::messages;
 use crate::fsm;
 use driver_rust::elevio::elev as e;
@@ -11,8 +12,7 @@ pub fn run(lights_rx: cbc::Receiver<messages::Controller>, elev_conn: e::Elevato
             recv(lights_rx) -> a => {
                 match a.unwrap() {
                     messages::Controller::Requests(requests) => {
-                        info!("Received Requests");
-                        debug!("{:?}", &requests);
+                        debug!("Received Requests");
                         set_all_lights(&elev_conn, &requests);
                     }
                 }
