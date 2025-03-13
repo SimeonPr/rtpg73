@@ -10,9 +10,9 @@ use bincode;
 pub fn run(rx: cbc::Receiver<messages::Manager>) {
     debug!("Sender up and running...");
     let addr: SocketAddr = "0.0.0.0:0".parse().expect("couldn't parse address");
-    let destination_addr: SocketAddr = "0.0.0.0:4567".parse().expect("couldn't parse address");
+    let destination_addr: SocketAddr = "255.255.255.255:4567".parse().expect("couldn't parse address");
     let socket = UdpSocket::bind(addr).expect("couldn't bind");
-
+    socket.set_broadcast(true).expect("set_broadcast failed");
     info!("Sending on {}", socket.local_addr().expect("local_addr failed"));
 
     loop {
