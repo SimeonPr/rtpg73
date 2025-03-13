@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::time::SystemTime;
 
 use crate::config;
+use crate::cost;
 use crate::fsm;
 use crate::fsm::Dirn;
 use crate::fsm::ElevatorBehaviour;
@@ -70,12 +71,16 @@ impl Request {
         }
         updated
     }
+
+    pub fn get_state(&self) -> RequestState {
+        self.state
+    }
 }
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct ElevatorNetworkState {
-    dirn: fsm::Dirn,
-    behaviour: fsm::ElevatorBehaviour,
-    current_floor: i8,
+    pub dirn: fsm::Dirn,
+    pub behaviour: fsm::ElevatorBehaviour,
+    pub current_floor: i8,
 }
 
 impl ElevatorNetworkState {
@@ -91,7 +96,7 @@ impl ElevatorNetworkState {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Elevator {
     last_received: SystemTime,
-    state: ElevatorNetworkState,
+    pub state: ElevatorNetworkState,
     cab_requests: [Request; config::FLOOR_COUNT]
 }
 impl Elevator {
@@ -102,6 +107,10 @@ impl Elevator {
             state: ElevatorNetworkState::new(),
             cab_requests
         }
+    }
+
+    pub fn get_cab_requests(&self) -> [Request; config::FLOOR_COUNT] {
+        self.cab_requests.clone()
     }
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -247,7 +256,8 @@ impl WorldView {
                     _ => (),
                 }
             },
-            _ => ()    // unknown request
+            _ => ()
+    // unknown request
         }
         updated
     }
@@ -290,7 +300,10 @@ impl WorldView {
     pub fn get_elevators(&self) -> HashMap<u8, Elevator> {
         self.elevators.clone()
     }
-
+    pub fn assign_requests(&self) -> fsm::ControllerRequests {
+        let result: fsm::ControllerRequests = cost::elevator_algorythm(&self);
+        result
+    }
     pub fn get_confirmed_requests(&self) -> [[bool; config::CALL_COUNT]; config::FLOOR_COUNT] {
         let mut requests: [[bool; config::CALL_COUNT]; config::FLOOR_COUNT] = [[false; config::CALL_COUNT]; config::FLOOR_COUNT];
         let elev = self.elevators.get(&self.id).expect("own ID not in elevators");
@@ -315,7 +328,12 @@ impl WorldView {
 
         requests
     }
+
+    pub fn get_hall_requests(&self) -> [[Request; 2]; config::FLOOR_COUNT] {
+        self.hall_requests.clone()
+    }
 }
+
 
 pub fn run(
     id: u8,
@@ -412,7 +430,9 @@ fn inform_everybody(
     let world_view_clone = world_view.clone();
     sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).expect("send to sender failed");
     
-    let controller_reqs = world_view.get_confirmed_requests();
+    //let controller_reqs = world_view.get_confirmed_requests();
+    let controller_reqs = world_view.assign_requests();
+    let lights_reqs = world_view.get_confirmed_requests();
     controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
-    lights_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to lights failed");
+    lights_tx.send(messages::Controller::Requests(lights_reqs)).expect("send to lights failed");
 }

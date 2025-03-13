@@ -10,14 +10,21 @@ use crate::{config, messages};
 const CALL_COUNT: usize = 3;
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum ElevatorBehaviour {
+    #[serde(rename = "idle")]
     Idle,
+    #[serde(rename = "doorOpen")]
     DoorOpen,
+    #[serde(rename = "moving")]
     Moving
 }
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+
 pub enum Dirn {
+    #[serde(rename = "down")]
     Down = -1,
+    #[serde(rename = "stop")]
     Stop = 0,
+    #[serde(rename = "up")]
     Up = 1
 }
 #[derive(Debug)]

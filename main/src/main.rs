@@ -11,6 +11,7 @@ mod manager;
 mod controller;
 mod sender;
 mod receiver;
+mod cost;
 mod alarm;
 mod lights;
 mod fsm;
