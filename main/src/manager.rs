@@ -1,4 +1,5 @@
 use driver_rust::elevio::poll::CallButton;
+use log::error;
 use serde::{Deserialize, Serialize};
 use core::time::Duration;
 use std::collections::HashMap;
@@ -301,9 +302,24 @@ impl WorldView {
         self.elevators.clone()
     }
     pub fn assign_requests(&self) -> fsm::ControllerRequests {
-        let result: fsm::ControllerRequests = cost::elevator_algorythm(&self);
-        result
+        // Get Hall Requests
+        let result: Option<fsm::ControllerRequests> = cost::elevator_algorithm(&self);
+        match result {
+            Some(mut r) => {
+                // Add Cab Requests
+                let tmp = self.get_confirmed_requests();
+                for floor in 0..config::FLOOR_COUNT {
+                    r[floor][2] = tmp[floor][2];  
+                }
+                r
+            },
+            None => {
+                error!("Elevator Algorithm failed");
+                self.get_confirmed_requests()
+            }
+        }
     }
+
     pub fn get_confirmed_requests(&self) -> [[bool; config::CALL_COUNT]; config::FLOOR_COUNT] {
         let mut requests: [[bool; config::CALL_COUNT]; config::FLOOR_COUNT] = [[false; config::CALL_COUNT]; config::FLOOR_COUNT];
         let elev = self.elevators.get(&self.id).expect("own ID not in elevators");
@@ -346,7 +362,9 @@ pub fn run(
 ) {
     info!("Manager up and running...");
     let mut world_view = WorldView::init(id);
+    let mut humble_counter = 5;
     loop {
+        let mut updated = false;
         debug!("Current WorldView: {:#?}", &world_view);
         cbc::select! {
             recv(manager_rx) -> a => {
@@ -357,66 +375,45 @@ pub fn run(
                     },
                     messages::Manager::HeartBeat(foreign_world_view) => {
                         debug!("Received WorldView");
+                        humble_counter = 0;
                         if foreign_world_view.id != world_view.get_id() {
-                            let updated = world_view.handle_foreign_world_view(foreign_world_view);
-
-                            if updated {
-                                inform_everybody(
-                                    &world_view,
-                                    &sender_tx,
-                                    &controller_tx,
-                                    &lights_tx);
-                            }
+                            updated = world_view.handle_foreign_world_view(foreign_world_view);
                         }
                     },
                     messages::Manager::ElevatorState(dirn, behaviour, floor) => {
                         debug!("Received ElevatorState");
                         world_view.handle_elevator_state(dirn, behaviour, floor);
-                        
-                        inform_everybody(
-                            &world_view,
-                            &sender_tx,
-                            &controller_tx,
-                            &lights_tx);
+                        updated = true;
                     },
                     messages::Manager::ClearRequest(floor, should_clear) => {
                         debug!("Received ClearRequest");
                         world_view.handle_clear_request(floor, &should_clear);
-
-                        inform_everybody(
-                            &world_view,
-                            &sender_tx,
-                            &controller_tx,
-                            &lights_tx);
+                        updated = true;
                     }
                 }
             },
             recv(call_button_rx) -> a => {
                 debug!("Received ButtonPress");
                 let button_press = a.expect("couldn't get message");
-                
-                let updated = world_view.handle_button_press(&button_press);
-                if updated {
-                    inform_everybody(
-                        &world_view,
-                        &sender_tx,
-                        &controller_tx,
-                        &lights_tx);
-                }
-
+                updated = world_view.handle_button_press(&button_press);
             },
             recv(alarm_rx) -> _a => {
                 debug!("Received Alarm");
+                if humble_counter > 0 {
+                    humble_counter -= 1;
+                }
                 world_view.update_states_at_barrier();
-
-                inform_everybody(
-                    &world_view,
-                    &sender_tx,
-                    &controller_tx,
-                    &lights_tx);
+                updated = true;
             }
         }
-        debug!("After: {:#?}", &world_view);
+        if updated && !(humble_counter > 0) {
+            inform_everybody(
+                &world_view,
+                &sender_tx,
+                &controller_tx,
+                &lights_tx);
+        }
+
     }
 }
 
@@ -430,9 +427,9 @@ fn inform_everybody(
     let world_view_clone = world_view.clone();
     sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).expect("send to sender failed");
     
-    //let controller_reqs = world_view.get_confirmed_requests();
     let controller_reqs = world_view.assign_requests();
-    let lights_reqs = world_view.get_confirmed_requests();
     controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
+
+    let lights_reqs = world_view.get_confirmed_requests();
     lights_tx.send(messages::Controller::Requests(lights_reqs)).expect("send to lights failed");
 }
