@@ -411,7 +411,9 @@ pub fn run(
             recv(call_button_rx) -> a => {
                 debug!("Received ButtonPress");
                 let button_press = a.expect("couldn't get message");
-                updated = world_view.handle_button_press(&button_press);
+                if humble_counter == 0 {
+                    updated = world_view.handle_button_press(&button_press);
+                }
             },
             recv(alarm_rx) -> _a => {
                 debug!("Received Alarm");
