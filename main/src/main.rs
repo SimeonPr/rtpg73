@@ -102,20 +102,6 @@ fn main() {
     let alarm_tx_clone = alarm_tx.clone();
     let a = spawn(move || alarm::run(alarm_tx_clone, timeout));
 
-
-    // Test Block
-    // let mut init_requests = [[manager::RequestState::None;3]; config::FLOOR_COUNT];
-    // init_requests[0][2] = RequestState::Unconfirmed;
-    // let wv = WorldView::init_with_requests(5, init_requests);
-    // manager_tx.send(messages::Manager::HeartBeat(wv)).unwrap();
-
-    // let mut init_requests = [[manager::RequestState::None;3]; config::FLOOR_COUNT];
-    // init_requests[0][2] = RequestState::Confirmed;
-    // let wv = WorldView::init_with_requests(5, init_requests);
-    // manager_tx.send(messages::Manager::HeartBeat(wv)).unwrap();
-
-
-    
     let _ = m.join();
     let _ = l.join();
     let _ = c.join();
