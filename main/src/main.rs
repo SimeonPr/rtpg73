@@ -64,7 +64,8 @@ fn main() {
         Err(_) => format!("127.0.0.1:15657")
     };
 
-    let elevator_connection = e::Elevator::init(&address, elev_num_floors).expect("couldn't create elevator connection");
+    let elevator_connection =
+        e::Elevator::init(&address, elev_num_floors).expect("hardware must be available");
 
     info!("Spawning threads.");
     // spawn manager
