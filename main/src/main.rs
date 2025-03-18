@@ -1,6 +1,6 @@
 use core::time::Duration;
 use std::thread::spawn;
-
+use std::{process, panic};
 use crossbeam_channel as cbc;
 use driver_rust::elevio;
 use driver_rust::elevio::elev as e;
@@ -19,6 +19,12 @@ mod config;
 use std::env;
 
 fn main() {
+
+    // crash on any thread panic
+    panic::set_hook(Box::new(|info| {
+        eprintln!("A thread panicked: {:?}. \nExiting...", info);
+        process::abort();
+    }));
 
     let args: Vec<String> = env::args().collect();
     
