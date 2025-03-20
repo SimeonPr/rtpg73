@@ -281,11 +281,13 @@ impl WorldView {
         (wv_clone, updated)
     }
 
-    pub fn handle_elevator_state(&mut self, dirn: Dirn, behaviour: ElevatorBehaviour, floor: i8) {
-        let elev = self.elevators.get_mut(&self.id).expect("key should have been available");
+    pub fn handle_elevator_state(&self, dirn: Dirn, behaviour: ElevatorBehaviour, floor: i8) -> (WorldView, bool) {
+        let mut wv_clone = self.clone();
+        let elev = wv_clone.elevators.get_mut(&wv_clone.id).expect("key should have been available");
         elev.state.dirn = dirn;
         elev.state.behaviour = behaviour;
         elev.state.current_floor = floor;
+        (wv_clone, true)
     }
 
     pub fn handle_clear_request(&mut self, floor: usize, should_clear: &[bool; 3]) {
@@ -407,7 +409,8 @@ pub fn run(
                     },
                     messages::Manager::ElevatorState(dirn, behaviour, floor) => {
                         debug!("Received ElevatorState");
-                        world_view.handle_elevator_state(dirn, behaviour, floor);
+                        let (new_wv, up) = world_view.handle_elevator_state(dirn, behaviour, floor);
+                        if up {world_view = new_wv;}
                         updated = true;
                     },
                     messages::Manager::ClearRequest(floor, should_clear) => {
