@@ -154,9 +154,10 @@ impl WorldView {
         wv_clone
     }
     pub fn handle_foreign_world_view(
-        &mut self,
+        &self,
         foreign_world_view: WorldView
-    ) -> bool {
+    ) -> (WorldView, bool) {
+        let mut wv_clone = self.clone();
         let mut updated = false;
 
         let current_time = SystemTime::now();
@@ -166,16 +167,16 @@ impl WorldView {
 
         // add elevators that we dont already know of
         for key in foreign_world_view.elevators.keys() {
-            if !self.elevators.contains_key(key) {
+            if !wv_clone.elevators.contains_key(key) {
                 info!("NewElevator(id: {})", key);
                 let u = foreign_world_view.elevators.get(&key).expect("key should have been available");
-                self.elevators.insert(*key, u.clone());
+                wv_clone.elevators.insert(*key, u.clone());
             }
         }
 
         // update foreign elevators state + last_received
         if let Some(e) = foreign_elevators.get(&foreign_id) { 
-            let u = self.elevators.get_mut(&foreign_id).expect("key should have been available");
+            let u = wv_clone.elevators.get_mut(&foreign_id).expect("key should have been available");
             u.last_received = current_time;
             u.state = e.state;
         }
@@ -183,7 +184,7 @@ impl WorldView {
         // update hall requests
         for floor in 0..config::FLOOR_COUNT {
             for dir in 0..2 {
-                let res =  self.hall_requests[floor][dir].merge(&foreign_world_view.hall_requests[floor][dir], self.id);
+                let res = wv_clone.hall_requests[floor][dir].merge(&foreign_world_view.hall_requests[floor][dir], wv_clone.id);
                 if res {
                     info!("Updated HallRequest(floor: {floor}, Type: {dir})");
                 }
@@ -193,9 +194,9 @@ impl WorldView {
 
         // update cab requests
         for (id, foreign_elev) in foreign_elevators.iter() {
-            let own_elev = self.elevators.get_mut(&id).expect("key should have been available");
+            let own_elev = wv_clone.elevators.get_mut(&id).expect("key should have been available");
             for floor in 0..config::FLOOR_COUNT {
-                let res =  own_elev.cab_requests[floor].merge(&foreign_elev.cab_requests[floor], self.id);
+                let res = own_elev.cab_requests[floor].merge(&foreign_elev.cab_requests[floor], wv_clone.id);
                 if res {
                     info!("Updated CabRequest(floor: {floor}, Type: 2)");
                 }
@@ -204,8 +205,9 @@ impl WorldView {
         }
 
         // update states at barrier
-        updated |= self.update_states_at_barrier();
-        updated
+        let (wv_clone, tmp_updated) = wv_clone.update_states_at_barrier();
+        updated |= tmp_updated;
+        (wv_clone, updated)
     }
 
     pub fn update_states_at_barrier(&mut self) -> bool {
@@ -395,7 +397,9 @@ pub fn run(
                                 world_view = new_wv;
                                 humble_counter = 0;
                             } else {
-                                updated = world_view.handle_foreign_world_view(foreign_world_view);
+                                let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
+                                if up {world_view = new_wv;}
+                                updated = up;
                             }
                         }
                     },
