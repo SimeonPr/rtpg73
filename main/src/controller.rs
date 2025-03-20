@@ -1,7 +1,8 @@
 use crossbeam_channel as cbc;
 use driver_rust::elevio;
 use driver_rust::elevio::elev as e;
-use log::{debug, info};
+use log::debug;
+use log::info;
 
 use crate::messages;
 use crate::fsm;
@@ -9,13 +10,13 @@ use std::thread::spawn;
 use std::time::Duration;
 
 pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::Sender<messages::Manager>, elevator_connection: e::Elevator) -> std::io::Result<()> {
-    debug!("Controller up and running.");
+    info!("Controller up and running.");
     let (timer_tx, timer_rx) = cbc::unbounded::<bool>();
     let mut elevator_state = fsm::ElevatorState::init_elevator(elevator_connection.clone(), timer_tx);
 
     let poll_period = Duration::from_millis(25);
 
-    debug!("Starting hardware monitors.");
+    info!("Starting hardware monitors.");
     let (floor_sensor_tx, floor_sensor_rx) = cbc::unbounded::<u8>();
     {
         let elevator = elevator_connection.clone();
@@ -35,37 +36,39 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
     }
     if elevator_connection.floor_sensor().is_none() {
         elevator_state.fsm_on_init_between_floors();
-    }
+    } 
 
+    while elevator_connection.floor_sensor().is_none() {}
+    
     loop {
-        debug!("Waiting for input.");
         cbc::select! {
             recv(controller_rx) -> a => {
-                let message = a.unwrap();
+                let message = a.expect("controller couldn't receive");
                 match message {
-                    messages::Controller::Ping => {
-                        info!("Received ping");
-                    },
-                    messages::Controller::Request(call_button) => {
-                        elevator_state.fsm_on_request_button_press(call_button.floor as i8, call_button.call);
+                    messages::Controller::Requests(requests) => {
+                        debug!("Received Requests");
+                        elevator_state.fsm_on_new_requests(requests, &manager_tx);
                     }
                 }
             },
             recv(floor_sensor_rx) -> a => {
-                let floor_sensor = a.unwrap();
-                elevator_state.fsm_on_floor_arrival(floor_sensor as i8);
+                let floor_sensor = a.expect("floor_sensor couldn't receive");
+                debug!("Received FloorSensor");
+                elevator_state.fsm_on_floor_arrival(floor_sensor as i8, &manager_tx);
             },
             recv(stop_button_rx) -> a => {
-                let _stop_button = a.unwrap();
+                debug!("Received StopButton");
+                let _stop_button = a.expect("stop_button couldn't receive");
                 elevator_state.fsm_on_stop_button_press();
             },
             recv(obstruction_rx) -> a => {
-                let obstruction = a.unwrap();
+                debug!("Received Obstruction");
+                let obstruction = a.expect("obstruction couldn't receive");
                 elevator_state.fsm_on_obstruction(obstruction);
             },
             recv(timer_rx) -> a => {
-                let _time_out = a.unwrap();
-                elevator_state.fsm_on_door_time_out();
+                let _time_out = a.expect("timer couldn't receive");
+                elevator_state.fsm_on_door_time_out(&manager_tx);
             }
         };
     }
