@@ -132,6 +132,7 @@ impl ElevatorState {
     }
     pub fn fsm_on_floor_arrival(&mut self, floor: i8, manager_tx: &Sender<messages::Manager>) {
         trace!("fsm_on_floor_arrival");
+        //stop timer? 
         self.floor = floor;
         self.connection.floor_indicator(self.floor as u8);
 

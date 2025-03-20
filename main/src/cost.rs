@@ -1,6 +1,6 @@
 use serde_json;
 use std::collections::HashMap;
-use serde_json::{Value, from_str, json};
+use serde_json::{Value, json};
 use std::process::{Command,Stdio};
 use crate::fsm;
 use crate::config;
@@ -35,7 +35,7 @@ fn run_hra_executable(executable: &str, input_json: &str) -> Option<Vec<u8>> {
 }
 
 
-pub fn elevator_algorithm(world_view: &WorldView) -> Option<fsm::ControllerRequests> {
+pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequests, Vec<i32>)>{
     let mut states = HashMap::new();
     let alive_elevators = world_view.get_alive_elevators(2);
     let elevators = world_view.get_elevators();
@@ -76,30 +76,71 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<fsm::ControllerReque
     let own_id = world_view.get_id();
     let output_json = String::from_utf8(output).ok()?;
 
-    covert_json_to_controller_reqs(&output_json, own_id)
+    covert_json_to_controller_reqs(&output_json, own_id).ok()
 }
 
-pub fn covert_json_to_controller_reqs(output_json: &str, id: u8) -> Option<fsm::ControllerRequests> {
-    // Parse the JSON string into a Value
-    let parsed_json: Value = from_str(output_json).ok()?;
+pub fn covert_json_to_controller_reqs(
+    output_json: &str,
+    id: u8,
+) -> Result<(fsm::ControllerRequests, Vec<i32>), serde_json::Error> {
+    let parsed_json: Value = serde_json::from_str(output_json)?;
 
-    // Initialize a matrix with 4 rows (for id_1 to id_4), each being a vector of boolean pairs
-    let mut controller_requests: fsm::ControllerRequests = [[false; config::CALL_COUNT]; config::FLOOR_COUNT];
+    let active_elevators = ids_with_assigned_calls(&parsed_json)
+        .ok_or_else(|| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get active elevators")))?;
 
-    // Check if the ID exists in the parsed JSON
-    let id_data = parsed_json.get(&format!("id_{}", id))?;
+    let mut controller_requests: fsm::ControllerRequests =
+        [[false; config::CALL_COUNT]; config::FLOOR_COUNT];
 
-    // Iterate over the boolean pairs in the array for the current ID
-    for (floor, bool_pair) in id_data.as_array()?.iter().enumerate() {
-        // Each pair is an array of two booleans
-        let pair = bool_pair.as_array()?;
-        let bool1 = pair[0].as_bool()?;
-        let bool2 = pair[1].as_bool()?;
+    let id_data = parsed_json
+        .get(&format!("id_{}", id))
+        .ok_or_else(|| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "id not found")))?;
 
-        // Add the pair to the appropriate row in the matrix
-        controller_requests[floor][0] = controller_requests[floor][0] || bool1;
-        controller_requests[floor][1] = controller_requests[floor][1] || bool2;
+    for (floor, bool_pair) in id_data
+        .as_array()
+        .ok_or_else(|| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "id_data is not an array")))?
+        .iter()
+        .enumerate()
+    {
+        // <-- Add this part back clearly!
+        let pair = bool_pair
+            .as_array()
+            .ok_or_else(|| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "pair is not an array")))?;
+
+        controller_requests[floor][0] = pair.get(0).and_then(|b| b.as_bool()).unwrap_or(false);
+        controller_requests[floor][1] = pair.get(1).and_then(|b| b.as_bool()).unwrap_or(false);
     }
 
-    Some(controller_requests)
+    // Move this outside the loop clearly:
+    Ok((controller_requests, active_elevators))
+}
+
+fn ids_with_assigned_calls(parsed_json: &Value) -> Option<Vec<i32>> {
+    Some(
+        parsed_json.as_object()?
+            .iter()
+            .filter_map(|(key, val)| {
+                if key.starts_with("id_") {
+                    let has_true = val.as_array()
+                        .map(|arr| {
+                            arr.iter().any(|inner_arr| {
+                                inner_arr.as_array()
+                                    .map(|bool_vals| {
+                                        bool_vals.iter().any(|bool_val| bool_val.as_bool().unwrap_or(false))
+                                    })
+                                    .unwrap_or(false)
+                            })
+                        })
+                        .unwrap_or(false);
+
+                    if has_true {
+                        key.trim_start_matches("id_").parse::<i32>().ok()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect(),
+    )
 }
