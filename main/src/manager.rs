@@ -257,9 +257,12 @@ impl WorldView {
             let recovered = (u.state.current_floor != e.state.current_floor)
                          || (u.state.behaviour != e.state.behaviour);
     
-            if recovered && u.detect_if_dead_counter == 0 {
+            if recovered /*&& u.detect_if_dead_counter == 0*/ {
                 u.detect_if_dead_counter = 10;  // clearly reset counter
-                u.has_request = false;   // reset flag
+                if u.detect_if_dead_counter == 0 {
+                    u.has_request = false;
+                }
+                   // reset flag
                 info!("Foreign Elevator {} recovered, resetting detect_if_dead_counter.", foreign_id);
             }
             // --- End of clearly marked changes ---
@@ -367,11 +370,14 @@ impl WorldView {
         let recovered = elev.state.current_floor != floor
                      || elev.state.behaviour != behaviour;
     
-        if recovered && elev.detect_if_dead_counter == 0 {
-            elev.detect_if_dead_counter = 10; // clearly reset counter on recovery
-            elev.has_request = false;  // reset request flag clearly
-            info!("Own elevator recovered, resetting detect_if_dead_counter.");
-        }
+            if recovered /*&& u.detect_if_dead_counter == 0*/ {
+                u.detect_if_dead_counter = 10;  // clearly reset counter
+                if u.detect_if_dead_counter == 0 {
+                    u.has_request = false;
+                }
+                // reset flag
+                info!("Foreign Elevator {} recovered, resetting detect_if_dead_counter.", foreign_id);
+            }
         // --- End of recovery detection ---
     
         elev.state.dirn = dirn;
