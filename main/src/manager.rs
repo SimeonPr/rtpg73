@@ -251,24 +251,25 @@ impl WorldView {
         (wv_clone, updated)
     }
 
-    pub fn handle_button_press(&mut self, button_press: &CallButton) -> bool {
+    pub fn handle_button_press(&self, button_press: &CallButton) -> (WorldView, bool) {
+        let mut wv_clone = self.clone();
         let mut updated = false;
         match button_press.call {
             0|1 => { // hall_request?
-                match self.hall_requests[button_press.floor as usize][button_press.call as usize].state {
+                match wv_clone.hall_requests[button_press.floor as usize][button_press.call as usize].state {
                     RequestState::None => {
                         info!("ButtonPress(Floor: {}, Type: {})", button_press.floor, button_press.call);
-                        self.hall_requests[button_press.floor as usize][button_press.call as usize].set_to(RequestState::Unconfirmed, self.id);
+                        wv_clone.hall_requests[button_press.floor as usize][button_press.call as usize].set_to(RequestState::Unconfirmed, wv_clone.id);
                         updated = true;
                     },
                     _ => (),
                 }
             },
             2 => { // cab_request?
-                let own_elev = self.elevators.get_mut(&self.id).expect("key should have been available");
+                let own_elev = wv_clone.elevators.get_mut(&wv_clone.id).expect("key should have been available");
                 match own_elev.cab_requests[button_press.floor as usize].state {
                     RequestState::None => {
-                        own_elev.cab_requests[button_press.floor as usize].set_to(RequestState::Unconfirmed, self.id);
+                        own_elev.cab_requests[button_press.floor as usize].set_to(RequestState::Unconfirmed, wv_clone.id);
                         updated = true;
                     },
                     _ => (),
@@ -277,7 +278,7 @@ impl WorldView {
             _ => ()
     // unknown request
         }
-        updated
+        (wv_clone, updated)
     }
 
     pub fn handle_elevator_state(&mut self, dirn: Dirn, behaviour: ElevatorBehaviour, floor: i8) {
@@ -420,7 +421,9 @@ pub fn run(
                 debug!("Received ButtonPress");
                 let button_press = a.expect("couldn't get message");
                 if humble_counter == 0 {
-                    updated = world_view.handle_button_press(&button_press);
+                    let (new_wv, up) = world_view.handle_button_press(&button_press);
+                    if up {world_view = new_wv;}
+                    updated = up;
                 }
             },
             recv(alarm_rx) -> _a => {
