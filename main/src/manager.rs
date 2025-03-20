@@ -290,7 +290,7 @@ impl WorldView {
         (wv_clone, true)
     }
 
-    pub fn handle_clear_request(&mut self, floor: usize, should_clear: &[bool; 3]) -> (WorldView, bool) {
+    pub fn handle_clear_request(&self, floor: usize, should_clear: &[bool; 3]) -> (WorldView, bool) {
         let mut wv_clone = self.clone();
         let own_elev = wv_clone.elevators.get_mut(&wv_clone.id).expect("key should have been available");
         debug!("Clearing {:?}", &should_clear);
