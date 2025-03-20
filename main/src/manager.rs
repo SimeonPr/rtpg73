@@ -210,20 +210,21 @@ impl WorldView {
         (wv_clone, updated)
     }
 
-    pub fn update_states_at_barrier(&mut self) -> bool {
+    pub fn update_states_at_barrier(&self) -> (WorldView, bool) {
+        let mut wv_clone = self.clone();
         let mut updated = false;
 
         // get alive elevators
-        let alive_elevators = self.get_alive_elevators(1);
+        let alive_elevators = wv_clone.get_alive_elevators(1);
 
         // go through hall_requests
         for floor in 0..config::FLOOR_COUNT {
             for dir in 0..2 {
-                match self.hall_requests[floor][dir].state {
+                match wv_clone.hall_requests[floor][dir].state {
                     RequestState::Unconfirmed => {
-                        if alive_elevators.is_subset(&self.hall_requests[floor][dir].acks) {
+                        if alive_elevators.is_subset(&wv_clone.hall_requests[floor][dir].acks) {
                             info!("Confirming HallRequest(Floor: {floor}, Type: {dir})");
-                            self.hall_requests[floor][dir].set_to(RequestState::Confirmed, self.id);
+                            wv_clone.hall_requests[floor][dir].set_to(RequestState::Confirmed, wv_clone.id);
                             updated = true;
                         }
                     },
@@ -233,13 +234,13 @@ impl WorldView {
         }
 
         // go through cab_requests
-        for (_, elev) in self.elevators.iter_mut() {
+        for (_, elev) in wv_clone.elevators.iter_mut() {
             for floor in 0..config::FLOOR_COUNT {
                 match elev.cab_requests[floor].state {
                     RequestState::Unconfirmed => {
                         if alive_elevators.is_subset(&elev.cab_requests[floor].acks) {
                             info!("Confirming CabRequest(Floor: {floor}, Type: 2)");
-                            elev.cab_requests[floor].set_to(RequestState::Confirmed, self.id);
+                            elev.cab_requests[floor].set_to(RequestState::Confirmed, wv_clone.id);
                             updated = true;
                         }
                     },
@@ -247,7 +248,7 @@ impl WorldView {
                 }
             }
         }
-        updated
+        (wv_clone, updated)
     }
 
     pub fn handle_button_press(&mut self, button_press: &CallButton) -> bool {
@@ -427,8 +428,9 @@ pub fn run(
                 if humble_counter > 0 {
                     humble_counter -= 1;
                 } else {
-                    world_view.update_states_at_barrier();
-                    updated = true;
+                    let (new_wv, up) = world_view.update_states_at_barrier();
+                    if up {world_view = new_wv;}
+                    updated = up;
                 }
             }
         }
