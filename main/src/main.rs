@@ -59,11 +59,6 @@ fn main() {
 
     // create elevator_connection object
     let elev_num_floors = 4;
-<<<<<<< HEAD
-    // use this if you want to run in a docker container
-    // let elevator_connection = e::Elevator::init("host.docker.internal:15657", elev_num_floors).expect("couldn't create elevator connection");
-    let elevator_connection = e::Elevator::init("localhost:15657", elev_num_floors).expect("couldn't create elevator connection");
-=======
     let address = match env::var("ELEVATOR_PORT") {
         Ok(port) => format!("host.docker.internal:{}", port),
         Err(_) => format!("127.0.0.1:15657")
@@ -71,7 +66,6 @@ fn main() {
 
     let elevator_connection =
         e::Elevator::init(&address, elev_num_floors).expect("hardware must be available");
->>>>>>> error_handling
 
     info!("Spawning threads.");
     // spawn manager
@@ -108,12 +102,6 @@ fn main() {
     let timeout = Duration::from_secs(1);
     let alarm_tx_clone = alarm_tx.clone();
     let a = spawn(move || alarm::run(alarm_tx_clone, timeout));
-<<<<<<< HEAD
-    controller_tx.send(messages::Controller::Ping).unwrap();
-    
-    manager_tx.send(messages::Manager::Ping).unwrap();
-=======
->>>>>>> error_handling
 
     let _ = m.join();
     let _ = l.join();
