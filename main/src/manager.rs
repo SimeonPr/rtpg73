@@ -139,17 +139,19 @@ impl WorldView {
         }
     }
     pub fn handle_humbly(
-        &mut self,
+        &self,
         foreign_world_view: WorldView
-    ) {
+    ) -> WorldView {
+        let mut wv_clone = self.clone();
         info!("Humble Recovery");
-        let id = self.id;
-        let old_elevator = self.elevators.get(&id).unwrap().clone();
-        *self = foreign_world_view.clone();
-        self.id = id;
-        if !self.elevators.contains_key(&id) {
-            self.elevators.insert(id, old_elevator.clone());
+        let id = wv_clone.id;
+        let old_elevator = wv_clone.elevators.get(&id).unwrap().clone();
+        wv_clone = foreign_world_view.clone();
+        wv_clone.id = id;
+        if !wv_clone.elevators.contains_key(&id) {
+            wv_clone.elevators.insert(id, old_elevator.clone());
         }
+        wv_clone
     }
     pub fn handle_foreign_world_view(
         &mut self,
@@ -389,7 +391,8 @@ pub fn run(
                         debug!("Received WorldView");
                         if foreign_world_view.id != world_view.get_id() {
                             if humble_counter > 0 {
-                                world_view.handle_humbly(foreign_world_view);
+                                let new_wv = world_view.handle_humbly(foreign_world_view);
+                                world_view = new_wv;
                                 humble_counter = 0;
                             } else {
                                 updated = world_view.handle_foreign_world_view(foreign_world_view);
