@@ -67,7 +67,7 @@ impl Request {
             self.state = new_state;
             self.acks = r2.acks.clone();
             self.acks.insert(id);
-        } else { // state remains the same, but we need to add acks
+        } else if self.state == r2.state { // state remains the same, but we need to add acks
             self.acks.extend(r2.acks.clone());
         }
         updated
@@ -143,22 +143,25 @@ impl WorldView {
         }
     }
     pub fn handle_humbly(
-        &mut self,
+        &self,
         foreign_world_view: WorldView
-    ) {
+    ) -> WorldView {
+        let mut wv_clone = self.clone();
         info!("Humble Recovery");
-        let id = self.id;
-        let old_elevator = self.elevators.get(&id).unwrap().clone();
-        *self = foreign_world_view.clone();
-        self.id = id;
-        if !self.elevators.contains_key(&id) {
-            self.elevators.insert(id, old_elevator.clone());
+        let id = wv_clone.id;
+        let old_elevator = wv_clone.elevators.get(&id).unwrap().clone();
+        wv_clone = foreign_world_view.clone();
+        wv_clone.id = id;
+        if !wv_clone.elevators.contains_key(&id) {
+            wv_clone.elevators.insert(id, old_elevator.clone());
         }
+        wv_clone
     }
     pub fn handle_foreign_world_view(
-        &mut self,
+        &self,
         foreign_world_view: WorldView
-    ) -> bool {
+    ) -> (WorldView, bool) {
+        let mut wv_clone = self.clone();
         let mut updated = false;
 
         let current_time = SystemTime::now();
@@ -168,10 +171,10 @@ impl WorldView {
 
         // add elevators that we dont already know of
         for key in foreign_world_view.elevators.keys() {
-            if !self.elevators.contains_key(key) {
+            if !wv_clone.elevators.contains_key(key) {
                 info!("NewElevator(id: {})", key);
                 let u = foreign_world_view.elevators.get(&key).expect("key should have been available");
-                self.elevators.insert(*key, u.clone());
+                wv_clone.elevators.insert(*key, u.clone());
             }
         }
 
@@ -197,7 +200,7 @@ impl WorldView {
         // update hall requests
         for floor in 0..config::FLOOR_COUNT {
             for dir in 0..2 {
-                let res =  self.hall_requests[floor][dir].merge(&foreign_world_view.hall_requests[floor][dir], self.id);
+                let res = wv_clone.hall_requests[floor][dir].merge(&foreign_world_view.hall_requests[floor][dir], wv_clone.id);
                 if res {
                     info!("Updated HallRequest(floor: {floor}, Type: {dir})");
                 }
@@ -207,9 +210,9 @@ impl WorldView {
 
         // update cab requests
         for (id, foreign_elev) in foreign_elevators.iter() {
-            let own_elev = self.elevators.get_mut(&id).expect("key should have been available");
+            let own_elev = wv_clone.elevators.get_mut(&id).expect("key should have been available");
             for floor in 0..config::FLOOR_COUNT {
-                let res =  own_elev.cab_requests[floor].merge(&foreign_elev.cab_requests[floor], self.id);
+                let res = own_elev.cab_requests[floor].merge(&foreign_elev.cab_requests[floor], wv_clone.id);
                 if res {
                     info!("Updated CabRequest(floor: {floor}, Type: 2)");
                 }
@@ -218,24 +221,26 @@ impl WorldView {
         }
 
         // update states at barrier
-        updated |= self.update_states_at_barrier();
-        updated
+        let (wv_clone, tmp_updated) = wv_clone.update_states_at_barrier();
+        updated |= tmp_updated;
+        (wv_clone, updated)
     }
 
-    pub fn update_states_at_barrier(&mut self) -> bool {
+    pub fn update_states_at_barrier(&self) -> (WorldView, bool) {
+        let mut wv_clone = self.clone();
         let mut updated = false;
 
         // get alive elevators
-        let alive_elevators = self.get_alive_elevators(1);
+        let alive_elevators = wv_clone.get_alive_elevators(1);
 
         // go through hall_requests
         for floor in 0..config::FLOOR_COUNT {
             for dir in 0..2 {
-                match self.hall_requests[floor][dir].state {
+                match wv_clone.hall_requests[floor][dir].state {
                     RequestState::Unconfirmed => {
-                        if alive_elevators.is_subset(&self.hall_requests[floor][dir].acks) {
+                        if alive_elevators.is_subset(&wv_clone.hall_requests[floor][dir].acks) {
                             info!("Confirming HallRequest(Floor: {floor}, Type: {dir})");
-                            self.hall_requests[floor][dir].set_to(RequestState::Confirmed, self.id);
+                            wv_clone.hall_requests[floor][dir].set_to(RequestState::Confirmed, wv_clone.id);
                             updated = true;
                         }
                     },
@@ -245,13 +250,13 @@ impl WorldView {
         }
 
         // go through cab_requests
-        for (_, elev) in self.elevators.iter_mut() {
+        for (_, elev) in wv_clone.elevators.iter_mut() {
             for floor in 0..config::FLOOR_COUNT {
                 match elev.cab_requests[floor].state {
                     RequestState::Unconfirmed => {
                         if alive_elevators.is_subset(&elev.cab_requests[floor].acks) {
                             info!("Confirming CabRequest(Floor: {floor}, Type: 2)");
-                            elev.cab_requests[floor].set_to(RequestState::Confirmed, self.id);
+                            elev.cab_requests[floor].set_to(RequestState::Confirmed, wv_clone.id);
                             updated = true;
                         }
                     },
@@ -259,27 +264,28 @@ impl WorldView {
                 }
             }
         }
-        updated
+        (wv_clone, updated)
     }
 
-    pub fn handle_button_press(&mut self, button_press: &CallButton) -> bool {
+    pub fn handle_button_press(&self, button_press: &CallButton) -> (WorldView, bool) {
+        let mut wv_clone = self.clone();
         let mut updated = false;
         match button_press.call {
             0|1 => { // hall_request?
-                match self.hall_requests[button_press.floor as usize][button_press.call as usize].state {
+                match wv_clone.hall_requests[button_press.floor as usize][button_press.call as usize].state {
                     RequestState::None => {
                         info!("ButtonPress(Floor: {}, Type: {})", button_press.floor, button_press.call);
-                        self.hall_requests[button_press.floor as usize][button_press.call as usize].set_to(RequestState::Unconfirmed, self.id);
+                        wv_clone.hall_requests[button_press.floor as usize][button_press.call as usize].set_to(RequestState::Unconfirmed, wv_clone.id);
                         updated = true;
                     },
                     _ => (),
                 }
             },
             2 => { // cab_request?
-                let own_elev = self.elevators.get_mut(&self.id).expect("key should have been available");
+                let own_elev = wv_clone.elevators.get_mut(&wv_clone.id).expect("key should have been available");
                 match own_elev.cab_requests[button_press.floor as usize].state {
                     RequestState::None => {
-                        own_elev.cab_requests[button_press.floor as usize].set_to(RequestState::Unconfirmed, self.id);
+                        own_elev.cab_requests[button_press.floor as usize].set_to(RequestState::Unconfirmed, wv_clone.id);
                         updated = true;
                     },
                     _ => (),
@@ -288,7 +294,7 @@ impl WorldView {
             _ => ()
     // unknown request
         }
-        updated
+        (wv_clone, updated)
     }
 
     
@@ -309,23 +315,25 @@ impl WorldView {
         elev.state.dirn = dirn;
         elev.state.behaviour = behaviour;
         elev.state.current_floor = floor;
+        (wv_clone, true)
     }
 
-    pub fn handle_clear_request(&mut self, floor: usize, should_clear: &[bool; 3]) {
-        
-        let own_elev = self.elevators.get_mut(&self.id).expect("key should have been available");
+    pub fn handle_clear_request(&self, floor: usize, should_clear: &[bool; 3]) -> (WorldView, bool) {
+        let mut wv_clone = self.clone();
+        let own_elev = wv_clone.elevators.get_mut(&wv_clone.id).expect("key should have been available");
         debug!("Clearing {:?}", &should_clear);
         for i in 0..2 {
             if should_clear[i] {
                 info!("ClearRequest(Floor: {floor}, Type: {i})");
-                self.hall_requests[floor][i].set_to(RequestState::None, self.id);
+                wv_clone.hall_requests[floor][i].set_to(RequestState::None, wv_clone.id);
             }
         }
 
         if should_clear[2] {
             info!("ClearRequest(Floor: {floor}, Type: 2)");
-            own_elev.cab_requests[floor].set_to(RequestState::None, self.id);
+            own_elev.cab_requests[floor].set_to(RequestState::None, wv_clone.id);
         }
+        (wv_clone, true)
     }
     // Getters
     pub fn get_alive_elevators(&self, timeout: u64) -> HashSet<u8> {
@@ -420,22 +428,27 @@ pub fn run(
                         debug!("Received WorldView");
                         if foreign_world_view.id != world_view.get_id() {
                             if humble_counter > 0 {
-                                world_view.handle_humbly(foreign_world_view);
+                                let new_wv = world_view.handle_humbly(foreign_world_view);
+                                world_view = new_wv;
                                 humble_counter = 0;
                             } else {
-                                updated = world_view.handle_foreign_world_view(foreign_world_view);
+                                let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
+                                if up {world_view = new_wv;}
+                                updated = up;
                             }
                         }
                     },
                     messages::Manager::ElevatorState(dirn, behaviour, floor) => {
                         debug!("Received ElevatorState");
-                        world_view.handle_elevator_state(dirn, behaviour, floor);
+                        let (new_wv, up) = world_view.handle_elevator_state(dirn, behaviour, floor);
+                        if up {world_view = new_wv;}
                         updated = true;
                     },
                     messages::Manager::ClearRequest(floor, should_clear) => {
                         debug!("Received ClearRequest");
-                        world_view.handle_clear_request(floor, &should_clear);
-                        updated = true;
+                        let (new_wv, up) = world_view.handle_clear_request(floor, &should_clear);
+                        if up {world_view = new_wv;}
+                        updated = up;
                     }
                 }
             },
@@ -443,13 +456,19 @@ pub fn run(
                 debug!("Received ButtonPress");
                 let button_press = a.expect("couldn't get message");
                 if humble_counter == 0 {
-                    updated = world_view.handle_button_press(&button_press);
+                    let (new_wv, up) = world_view.handle_button_press(&button_press);
+                    if up {world_view = new_wv;}
+                    updated = up;
                 }
             },
             recv(alarm_rx) -> _a => {
                 debug!("Received Alarm");
                 if humble_counter > 0 {
                     humble_counter -= 1;
+                } else {
+                    let (new_wv, up) = world_view.update_states_at_barrier();
+                    if up {world_view = new_wv;}
+                    updated = up;
                 }
                 world_view.update_states_at_barrier();
                 for elevator in world_view.elevators.values_mut() {

@@ -1,5 +1,5 @@
 use driver_rust::elevio::elev::Elevator;
-use log::{info, trace};
+use log::{trace, debug};
 use serde::{Serialize, Deserialize};
 
 use std::thread;
@@ -106,7 +106,7 @@ impl ElevatorState {
             self.start_time_out_thread();
             return;
         }
-        info!("Handling LastTimeOut");
+        debug!("Handling LastTimeOut");
         match self.behaviour {
             ElevatorBehaviour::DoorOpen => {
                 let pair: DirectionBehaviourPair = self.requests_choose_direction();

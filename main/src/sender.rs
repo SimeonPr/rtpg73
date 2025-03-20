@@ -2,26 +2,32 @@ use core::net::SocketAddr;
 use std::net::UdpSocket;
 
 use crossbeam_channel as cbc;
-use log::{debug, info};
+use log::{debug, info, error};
 
 use crate::messages;
 use bincode;
 
 pub fn run(rx: cbc::Receiver<messages::Manager>) {
     debug!("Sender up and running...");
-    let addr: SocketAddr = "0.0.0.0:0".parse().expect("couldn't parse address");
-    let destination_addr: SocketAddr = "255.255.255.255:4567".parse().expect("couldn't parse address");
-    let socket = UdpSocket::bind(addr).expect("couldn't bind");
-    socket.set_broadcast(true).expect("set_broadcast failed");
-    info!("Sending on {}", socket.local_addr().expect("local_addr failed"));
+    let addr: SocketAddr = "0.0.0.0:0".parse().expect("address should be parseable");
+    let destination_addr: SocketAddr = "255.255.255.255:4567".parse().expect("address should be parseable");
+    let socket = UdpSocket::bind(addr).expect("address needs to be available");
+    socket.set_broadcast(true).expect("broadcast is essential for communication");
+    info!("Sending on {}", socket.local_addr().expect("local_addr should not failf"));
 
     loop {
         debug!("Waiting for input...");
         cbc::select! {
             recv(rx) -> a => {
-                let packet = a.expect("couldn't get message");
-                let serialized = bincode::serialize(&packet).expect("serialize failed");
-                socket.send_to(&serialized, destination_addr).expect("send_to failed");
+                let packet = a.expect("message should be unwrappable");
+                let serialized = bincode::serialize(&packet).expect("serialization should work");
+                match socket.send_to(&serialized, destination_addr) {
+                    Err(e) => {
+                        error!("broadcast on network failed: {}", e);
+                        continue;
+                    },
+                    _ => ()
+                }
             }
         }        
     }

@@ -1,0 +1,8 @@
+# Set the number to the first argument or default to 0
+num=${1:-0}
+
+# Infinite loop calling the program with the number
+while true; do
+    RUST_LOG=info cargo run --release -- --id "$num"
+    sleep 1
+done

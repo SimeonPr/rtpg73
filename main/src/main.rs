@@ -1,6 +1,6 @@
 use core::time::Duration;
 use std::thread::spawn;
-
+use std::{process, panic};
 use crossbeam_channel as cbc;
 use driver_rust::elevio;
 use driver_rust::elevio::elev as e;
@@ -19,6 +19,12 @@ mod config;
 use std::env;
 
 fn main() {
+
+    // crash on any thread panic
+    panic::set_hook(Box::new(|info| {
+        eprintln!("A thread panicked: {:?}. \nExiting...", info);
+        process::abort();
+    }));
 
     let args: Vec<String> = env::args().collect();
     
@@ -58,7 +64,8 @@ fn main() {
         Err(_) => format!("127.0.0.1:15657")
     };
 
-    let elevator_connection = e::Elevator::init(&address, elev_num_floors).expect("couldn't create elevator connection");
+    let elevator_connection =
+        e::Elevator::init(&address, elev_num_floors).expect("hardware must be available");
 
     info!("Spawning threads.");
     // spawn manager
@@ -96,20 +103,6 @@ fn main() {
     let alarm_tx_clone = alarm_tx.clone();
     let a = spawn(move || alarm::run(alarm_tx_clone, timeout));
 
-
-    // Test Block
-    // let mut init_requests = [[manager::RequestState::None;3]; config::FLOOR_COUNT];
-    // init_requests[0][2] = RequestState::Unconfirmed;
-    // let wv = WorldView::init_with_requests(5, init_requests);
-    // manager_tx.send(messages::Manager::HeartBeat(wv)).unwrap();
-
-    // let mut init_requests = [[manager::RequestState::None;3]; config::FLOOR_COUNT];
-    // init_requests[0][2] = RequestState::Confirmed;
-    // let wv = WorldView::init_with_requests(5, init_requests);
-    // manager_tx.send(messages::Manager::HeartBeat(wv)).unwrap();
-
-
-    
     let _ = m.join();
     let _ = l.join();
     let _ = c.join();
