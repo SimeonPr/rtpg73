@@ -561,6 +561,7 @@ pub fn run(
                 for elevator in world_view.elevators.values_mut() {
                     if elevator.has_request && elevator.detect_if_dead_counter > 0 {
                         elevator.detect_if_dead_counter -= 1;
+                        println!{"{}", elevator.detect_if_dead_counter};
                         
                     }
                 }
