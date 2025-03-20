@@ -67,7 +67,7 @@ impl Request {
             self.state = new_state;
             self.acks = r2.acks.clone();
             self.acks.insert(id);
-        } else { // state remains the same, but we need to add acks
+        } else if self.state == r2.state { // state remains the same, but we need to add acks
             self.acks.extend(r2.acks.clone());
         }
         updated
