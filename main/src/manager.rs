@@ -598,10 +598,8 @@ fn inform_everybody(
             // if already has_request, do not reset counter
         } else {
             elevator.has_request = false;
-            if elevator.detect_if_dead_counter > 0 {
-                elevator.detect_if_dead_counter = 10;
-            }
-             
+            elevator.detect_if_dead_counter = 10;
+            
         }
     }
     controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
