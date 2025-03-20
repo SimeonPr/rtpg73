@@ -290,21 +290,22 @@ impl WorldView {
         (wv_clone, true)
     }
 
-    pub fn handle_clear_request(&mut self, floor: usize, should_clear: &[bool; 3]) {
-        
-        let own_elev = self.elevators.get_mut(&self.id).expect("key should have been available");
+    pub fn handle_clear_request(&mut self, floor: usize, should_clear: &[bool; 3]) -> (WorldView, bool) {
+        let mut wv_clone = self.clone();
+        let own_elev = wv_clone.elevators.get_mut(&wv_clone.id).expect("key should have been available");
         debug!("Clearing {:?}", &should_clear);
         for i in 0..2 {
             if should_clear[i] {
                 info!("ClearRequest(Floor: {floor}, Type: {i})");
-                self.hall_requests[floor][i].set_to(RequestState::None, self.id);
+                wv_clone.hall_requests[floor][i].set_to(RequestState::None, wv_clone.id);
             }
         }
 
         if should_clear[2] {
             info!("ClearRequest(Floor: {floor}, Type: 2)");
-            own_elev.cab_requests[floor].set_to(RequestState::None, self.id);
+            own_elev.cab_requests[floor].set_to(RequestState::None, wv_clone.id);
         }
+        (wv_clone, true)
     }
     // Getters
     pub fn get_alive_elevators(&self, timeout: u64) -> HashSet<u8> {
@@ -415,8 +416,9 @@ pub fn run(
                     },
                     messages::Manager::ClearRequest(floor, should_clear) => {
                         debug!("Received ClearRequest");
-                        world_view.handle_clear_request(floor, &should_clear);
-                        updated = true;
+                        let (new_wv, up) = world_view.handle_clear_request(floor, &should_clear);
+                        if up {world_view = new_wv;}
+                        updated = up;
                     }
                 }
             },
