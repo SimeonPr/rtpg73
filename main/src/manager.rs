@@ -258,10 +258,11 @@ impl WorldView {
                          || (u.state.behaviour != e.state.behaviour);
     
             if recovered /*&& u.detect_if_dead_counter == 0*/ {
-                u.detect_if_dead_counter = 10;  // clearly reset counter
                 if u.detect_if_dead_counter == 0 {
                     u.has_request = false;
                 }
+                u.detect_if_dead_counter = 10;  // clearly reset counter
+                
                    // reset flag
                 info!("Foreign Elevator {} recovered, resetting detect_if_dead_counter.", foreign_id);
             }
@@ -370,14 +371,19 @@ impl WorldView {
         let recovered = elev.state.current_floor != floor
                      || elev.state.behaviour != behaviour;
     
-            if recovered /*&& u.detect_if_dead_counter == 0*/ {
-                u.detect_if_dead_counter = 10;  // clearly reset counter
-                if u.detect_if_dead_counter == 0 {
-                    u.has_request = false;
-                }
-                // reset flag
-                info!("Foreign Elevator {} recovered, resetting detect_if_dead_counter.", foreign_id);
+        if recovered{
+
+            if elev.detect_if_dead_counter == 0{
+                elev.has_request = false;
             }
+            elev.detect_if_dead_counter = 10;
+             // clearly reset counter on recovery
+              // reset request flag clearly
+            info!("Own elevator recovered, resetting detect_if_dead_counter.");
+        }
+        
+               // reset flag
+        
         // --- End of recovery detection ---
     
         elev.state.dirn = dirn;
