@@ -257,11 +257,11 @@ impl WorldView {
             let recovered = (u.state.current_floor != e.state.current_floor)
                          || (u.state.behaviour != e.state.behaviour);
     
-            if recovered /*&& u.detect_if_dead_counter == 0*/ {
-                if u.detect_if_dead_counter == 0 {
-                    u.has_request = false;
-                }
-                u.detect_if_dead_counter = 10;  // clearly reset counter
+            if recovered || !u.has_request/*&& u.detect_if_dead_counter == 0*/ {
+                //if u.detect_if_dead_counter == 0 {
+                    //u.has_request = false;
+                //}
+                u.detect_if_dead_counter = 5;  // clearly reset counter
                 
                    // reset flag
                 info!("Foreign Elevator {} recovered, resetting detect_if_dead_counter.", foreign_id);
@@ -371,12 +371,14 @@ impl WorldView {
         let recovered = elev.state.current_floor != floor
                      || elev.state.behaviour != behaviour;
     
-        if recovered{
+        if recovered || !elev.has_request{
 
-            if elev.detect_if_dead_counter == 0{
-                elev.has_request = false;
-            }
-            elev.detect_if_dead_counter = 10;
+            //if elev.detect_if_dead_counter == 0{
+                //elev.has_request = false;
+            //}else{
+                //elev.detect_if_dead_counter = 10;
+            //}
+            elev.detect_if_dead_counter = 5;
              // clearly reset counter on recovery
               // reset request flag clearly
             info!("Own elevator recovered, resetting detect_if_dead_counter.");
@@ -595,38 +597,13 @@ fn inform_everybody(
                 elevator.has_request = true;
                 elevator.detect_if_dead_counter = 10; // clearly start at 10
             }
+            // if already has_request, do not reset counter
         } else {
-            // 🚨 Check ALL request types (Cab + Hall) before unsetting `has_request`
-            let mut has_pending_requests = false;
-    
-            // Check Cab Requests
-            for floor in 0..config::FLOOR_COUNT {
-                if elevator.cab_requests[floor].state == RequestState::Confirmed {
-                    has_pending_requests = true;
-                    break;
-                }
-            }
-    
-            // Check Hall Requests (Hall Up + Hall Down)
-            for floor in 0..config::FLOOR_COUNT {
-                for dir in 0..2 {
-                    if world_view.hall_requests[floor][dir].state == RequestState::Confirmed {
-                        has_pending_requests = true;
-                        break;
-                    }
-                }
-                if has_pending_requests { break; } // Exit loop early if we find a request
-            }
-    
-            // Only set `has_request = false` if NO requests exist
-            if !has_pending_requests {
-                elevator.has_request = false;
-            }
-    
-            // Reset detect_if_dead_counter for truly idle elevators
+            elevator.has_request = false;
             if elevator.detect_if_dead_counter > 0 {
                 elevator.detect_if_dead_counter = 10;
             }
+             
         }
     }
     controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
