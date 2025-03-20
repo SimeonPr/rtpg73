@@ -8,7 +8,7 @@ use crossbeam_channel::{self as cbc, Sender};
 use crate::{config, messages};
 
 const CALL_COUNT: usize = 3;
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum ElevatorBehaviour {
     #[serde(rename = "idle")]
     Idle,
@@ -133,6 +133,7 @@ impl ElevatorState {
     }
     pub fn fsm_on_floor_arrival(&mut self, floor: i8, manager_tx: &Sender<messages::Manager>) {
         trace!("fsm_on_floor_arrival");
+        //stop timer? 
         self.floor = floor;
         self.connection.floor_indicator(self.floor as u8);
 
