@@ -138,6 +138,77 @@ impl WorldView {
             hall_requests
         }
     }
+    pub fn compare_world_views(
+        &self,
+        other_world_view: &WorldView
+    ) {
+        // Hall requests
+        for floor in 0..config::FLOOR_COUNT {
+            for dir in 0..2 {
+                if self.hall_requests[floor][dir].state != other_world_view.hall_requests[floor][dir].state {
+                    info!(
+                        "HallRequestState(floor: {}, dir: {}): {:?} -> {:?}",
+                        floor,
+                        dir,
+                        self.hall_requests[floor][dir].state,
+                        other_world_view.hall_requests[floor][dir].state
+                    );
+                }
+            }
+        }
+        // new elevators?
+        for key in other_world_view.elevators.keys() {
+            if !self.elevators.contains_key(key) {
+                info!("NewElevator(id: {})", key);
+            }
+        }
+        // Cab Requests + network state
+        for (key, elev) in self.elevators.iter() {
+            if other_world_view.elevators.contains_key(key) {
+                let other_elev = other_world_view.elevators.get(key).expect("we just checked that");
+                for floor in 0..config::FLOOR_COUNT {
+                    if elev.cab_requests[floor].state != other_elev.cab_requests[floor].state {
+                        info!(
+                            "CabRequestState(id: {}, floor: {}, dir: {}): {:?} -> {:?}",
+                            key,
+                            floor,
+                            2,
+                            elev.cab_requests[floor].state,
+                            other_elev.cab_requests[floor].state
+                        );
+                    }
+                    
+                }
+                // dirn
+                if elev.state.dirn != other_elev.state.dirn {
+                    info!(
+                        "Dirn(id: {}): {:?} -> {:?}",
+                        key,
+                        elev.state.dirn,
+                        other_elev.state.dirn
+                    );
+                }
+                if elev.state.current_floor != other_elev.state.current_floor {
+                    info!(
+                        "CurrentFloor(id: {}): {} -> {}",
+                        key,
+                        elev.state.current_floor,
+                        other_elev.state.current_floor
+                    );
+                }
+                if elev.state.behaviour != other_elev.state.behaviour {
+                    info!(
+                        "Behaviour(id: {}): {:?} -> {:?}",
+                        key,
+                        elev.state.behaviour,
+                        other_elev.state.behaviour
+                    );
+                }
+            } else {
+                info!("ID {} removed", key);
+            }
+        }
+    }
     pub fn handle_humbly(
         &self,
         foreign_world_view: WorldView
@@ -185,9 +256,6 @@ impl WorldView {
         for floor in 0..config::FLOOR_COUNT {
             for dir in 0..2 {
                 let res = wv_clone.hall_requests[floor][dir].merge(&foreign_world_view.hall_requests[floor][dir], wv_clone.id);
-                if res {
-                    info!("Updated HallRequest(floor: {floor}, Type: {dir})");
-                }
                 updated |= res;
             }
         }
@@ -197,9 +265,6 @@ impl WorldView {
             let own_elev = wv_clone.elevators.get_mut(&id).expect("key should have been available");
             for floor in 0..config::FLOOR_COUNT {
                 let res = own_elev.cab_requests[floor].merge(&foreign_elev.cab_requests[floor], wv_clone.id);
-                if res {
-                    info!("Updated CabRequest(floor: {floor}, Type: 2)");
-                }
                 updated |= res;
             }
         }
@@ -223,7 +288,6 @@ impl WorldView {
                 match wv_clone.hall_requests[floor][dir].state {
                     RequestState::Unconfirmed => {
                         if alive_elevators.is_subset(&wv_clone.hall_requests[floor][dir].acks) {
-                            info!("Confirming HallRequest(Floor: {floor}, Type: {dir})");
                             wv_clone.hall_requests[floor][dir].set_to(RequestState::Confirmed, wv_clone.id);
                             updated = true;
                         }
@@ -239,7 +303,6 @@ impl WorldView {
                 match elev.cab_requests[floor].state {
                     RequestState::Unconfirmed => {
                         if alive_elevators.is_subset(&elev.cab_requests[floor].acks) {
-                            info!("Confirming CabRequest(Floor: {floor}, Type: 2)");
                             elev.cab_requests[floor].set_to(RequestState::Confirmed, wv_clone.id);
                             updated = true;
                         }
@@ -275,8 +338,7 @@ impl WorldView {
                     _ => (),
                 }
             },
-            _ => ()
-    // unknown request
+            _ => () // unknown request
         }
         (wv_clone, updated)
     }
@@ -296,13 +358,11 @@ impl WorldView {
         debug!("Clearing {:?}", &should_clear);
         for i in 0..2 {
             if should_clear[i] {
-                info!("ClearRequest(Floor: {floor}, Type: {i})");
                 wv_clone.hall_requests[floor][i].set_to(RequestState::None, wv_clone.id);
             }
         }
 
         if should_clear[2] {
-            info!("ClearRequest(Floor: {floor}, Type: 2)");
             own_elev.cab_requests[floor].set_to(RequestState::None, wv_clone.id);
         }
         (wv_clone, true)
@@ -403,7 +463,10 @@ pub fn run(
                                 humble_counter = 0;
                             } else {
                                 let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
-                                if up {world_view = new_wv;}
+                                if up {
+                                    world_view.compare_world_views(&new_wv);
+                                    world_view = new_wv;
+                                }
                                 updated = up;
                             }
                         }
@@ -411,13 +474,19 @@ pub fn run(
                     messages::Manager::ElevatorState(dirn, behaviour, floor) => {
                         debug!("Received ElevatorState");
                         let (new_wv, up) = world_view.handle_elevator_state(dirn, behaviour, floor);
-                        if up {world_view = new_wv;}
+                        if up {
+                            world_view.compare_world_views(&new_wv);
+                            world_view = new_wv;
+                        }
                         updated = true;
                     },
                     messages::Manager::ClearRequest(floor, should_clear) => {
                         debug!("Received ClearRequest");
                         let (new_wv, up) = world_view.handle_clear_request(floor, &should_clear);
-                        if up {world_view = new_wv;}
+                        if up {
+                            world_view.compare_world_views(&new_wv);
+                            world_view = new_wv;
+                        }
                         updated = up;
                     }
                 }
@@ -427,7 +496,10 @@ pub fn run(
                 let button_press = a.expect("couldn't get message");
                 if humble_counter == 0 {
                     let (new_wv, up) = world_view.handle_button_press(&button_press);
-                    if up {world_view = new_wv;}
+                    if up {
+                        world_view.compare_world_views(&new_wv);
+                        world_view = new_wv;
+                    }
                     updated = up;
                 }
             },
@@ -437,7 +509,10 @@ pub fn run(
                     humble_counter -= 1;
                 } else {
                     let (new_wv, up) = world_view.update_states_at_barrier();
-                    if up {world_view = new_wv;}
+                    if up {
+                        world_view.compare_world_views(&new_wv);
+                        world_view = new_wv;
+                    }
                     updated = up;
                 }
             }

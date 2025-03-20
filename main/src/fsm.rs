@@ -8,7 +8,7 @@ use crossbeam_channel::{self as cbc, Sender};
 use crate::{config, messages};
 
 const CALL_COUNT: usize = 3;
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum ElevatorBehaviour {
     #[serde(rename = "idle")]
     Idle,
@@ -17,8 +17,7 @@ pub enum ElevatorBehaviour {
     #[serde(rename = "moving")]
     Moving
 }
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Dirn {
     #[serde(rename = "down")]
     Down = -1,
