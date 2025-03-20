@@ -419,9 +419,10 @@ pub fn run(
                 debug!("Received Alarm");
                 if humble_counter > 0 {
                     humble_counter -= 1;
+                } else {
+                    world_view.update_states_at_barrier();
+                    updated = true;
                 }
-                world_view.update_states_at_barrier();
-                updated = true;
             }
         }
         if updated && !(humble_counter > 0) {
