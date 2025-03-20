@@ -595,11 +595,38 @@ fn inform_everybody(
                 elevator.has_request = true;
                 elevator.detect_if_dead_counter = 10; // clearly start at 10
             }
-            // if already has_request, do not reset counter
         } else {
-            elevator.has_request = false;
-            elevator.detect_if_dead_counter = 10;
-            
+            // 🚨 Check ALL request types (Cab + Hall) before unsetting `has_request`
+            let mut has_pending_requests = false;
+    
+            // Check Cab Requests
+            for floor in 0..config::FLOOR_COUNT {
+                if elevator.cab_requests[floor].state == RequestState::Confirmed {
+                    has_pending_requests = true;
+                    break;
+                }
+            }
+    
+            // Check Hall Requests (Hall Up + Hall Down)
+            for floor in 0..config::FLOOR_COUNT {
+                for dir in 0..2 {
+                    if world_view.hall_requests[floor][dir].state == RequestState::Confirmed {
+                        has_pending_requests = true;
+                        break;
+                    }
+                }
+                if has_pending_requests { break; } // Exit loop early if we find a request
+            }
+    
+            // Only set `has_request = false` if NO requests exist
+            if !has_pending_requests {
+                elevator.has_request = false;
+            }
+    
+            // Reset detect_if_dead_counter for truly idle elevators
+            if elevator.detect_if_dead_counter > 0 {
+                elevator.detect_if_dead_counter = 10;
+            }
         }
     }
     controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
