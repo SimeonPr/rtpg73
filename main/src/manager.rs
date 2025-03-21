@@ -417,7 +417,7 @@ impl WorldView {
     pub fn get_alive_elevators(&self, timeout: u64) -> HashSet<u8> {
         let mut alive_elevators = HashSet::new();
         for (id, elev) in self.elevators.iter() {
-            if (*id != self.id) && (elev.last_received.elapsed().expect("elapsed() failed") > Duration::from_secs(timeout) || elev.is_working)
+            if (*id != self.id) && (elev.last_received.elapsed().expect("elapsed() failed") > Duration::from_secs(timeout) && elev.is_working)
             {continue;}
             alive_elevators.insert(*id);
         }
