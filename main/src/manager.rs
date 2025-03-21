@@ -443,19 +443,59 @@ impl WorldView {
 }
 
 
-fn update_dead_elevators(world_view: WorldView) -> (WorldView, fsm::ControllerRequests, Vec<i32>) {
+/// Decrement the detect_if_dead_counter for each elevator that has a pending request.
+/// If an elevator’s counter reaches zero, mark it as not working.
+/// Then, reassign call flags based on the active elevators.
+/// Returns:
+/// - The updated WorldView.
+/// - A boolean flag that is true if any elevator’s counter or working flag changed.
+/// - The controller request set and active elevator IDs.
+fn update_dead_elevators(
+    world_view: WorldView
+) -> (WorldView, bool, fsm::ControllerRequests, Vec<i32>) {
+    let old_wv = world_view.clone();
     let mut new_wv = world_view;
-    // Decrement the counter for elevators with active request
+    let mut changed = false;
+    
+    // First, decrement dead counters if a request is pending.
     for (_id, elevator) in new_wv.elevators.iter_mut() {
+        let old_counter = elevator.detect_if_dead_counter;
+        let old_working = elevator.is_working;
         if elevator.has_request && elevator.detect_if_dead_counter > 0 {
             elevator.detect_if_dead_counter -= 1;
         }
-        if elevator.detect_if_dead_counter == 0 {
+        if elevator.detect_if_dead_counter == 0 && elevator.is_working {
             elevator.is_working = false;
         }
+        if elevator.detect_if_dead_counter != old_counter || elevator.is_working != old_working {
+            changed = true;
+        }
     }
+    
+    // Get the current controller requests and active elevator IDs.
     let (controller_reqs, active_elevators) = new_wv.assign_requests();
-    (new_wv, controller_reqs, active_elevators)
+    
+    // Then, reassign call flags based on active elevators.
+    for (id, elevator) in new_wv.elevators.iter_mut() {
+        let old_has_request = elevator.has_request;
+        let old_counter = elevator.detect_if_dead_counter;
+        if active_elevators.contains(&(*id as i32)) {
+            if !elevator.has_request {
+                elevator.has_request = true;
+                elevator.detect_if_dead_counter = 10; // reset counter for active elevators
+            }
+        } else {
+            elevator.has_request = false;
+            if elevator.detect_if_dead_counter > 0 {
+                elevator.detect_if_dead_counter = 10;
+            }
+        }
+        if elevator.has_request != old_has_request || elevator.detect_if_dead_counter != old_counter {
+            changed = true;
+        }
+    }
+    
+    (new_wv, changed, controller_reqs, active_elevators)
 }
 
 
@@ -519,7 +559,7 @@ pub fn run(
                                     world_view.compare_world_views(&new_wv);
                                     world_view = new_wv;
                                 }
-                                updated = up;
+                                updated |= up;
                             }
                         }
                     },
@@ -560,19 +600,23 @@ pub fn run(
                 if humble_counter > 0 {
                     humble_counter -= 1;
                 } else {
-                    let (new_wv, up) = world_view.update_states_at_barrier();
-                    if up {
+                    let (new_wv, up_barrier) = world_view.update_states_at_barrier();
+                    if up_barrier {
                         world_view.compare_world_views(&new_wv);
                         world_view = new_wv;
+                        updated |= true;
                     }
-                    updated = up;
                 }
-                
-                let (new_wv, controller_reqs, _active_elevators) = update_dead_elevators(world_view);
+                // Update dead counters and reassign calls.
+                let (new_wv, dead_changed, _controller_reqs, _active_elevators) = update_dead_elevators(world_view);
                 world_view = new_wv;
+                if dead_changed {
+                    updated |= true;
+                }
             }
         } // end select
 
+        // Only send messages when humble logic allows.
         if updated && humble_counter == 0 {
             let (heartbeat, controller_msg, lights_msg) = prepare_inform_messages(world_view.clone());
             sender_tx.send(heartbeat).expect("send to sender failed");
