@@ -100,7 +100,8 @@ pub struct Elevator {
     pub state: ElevatorNetworkState,
     cab_requests: [Request; config::FLOOR_COUNT],
     has_request: bool,
-    detect_if_dead_counter: u8
+    detect_if_dead_counter: u8,
+    is_working: bool
 }
 impl Elevator {
     pub fn new() -> Elevator {
@@ -110,7 +111,8 @@ impl Elevator {
             state: ElevatorNetworkState::new(),
             cab_requests,
             has_request: false,
-            detect_if_dead_counter: 10
+            detect_if_dead_counter: 10,
+            is_working: true
         }
     }
 
@@ -257,10 +259,11 @@ impl WorldView {
             let recovered = (u.state.current_floor != e.state.current_floor)
                          || (u.state.behaviour != e.state.behaviour);
     
-            if recovered || !u.has_request/*&& u.detect_if_dead_counter == 0*/ {
+            if recovered/*&& u.detect_if_dead_counter == 0*/ {
                 //if u.detect_if_dead_counter == 0 {
                     //u.has_request = false;
                 //}
+                u.is_working = true;
                 u.detect_if_dead_counter = 10;  // clearly reset counter
                 
                    // reset flag
@@ -371,13 +374,14 @@ impl WorldView {
         let recovered = elev.state.current_floor != floor
                      || elev.state.behaviour != behaviour;
     
-        if recovered || !elev.has_request{
+        if recovered{
 
             //if elev.detect_if_dead_counter == 0{
                 //elev.has_request = false;
             //}else{
                 //elev.detect_if_dead_counter = 10;
             //}
+            elev.is_working = true;
             elev.detect_if_dead_counter = 10;
              // clearly reset counter on recovery
               // reset request flag clearly
@@ -413,7 +417,7 @@ impl WorldView {
     pub fn get_alive_elevators(&self, timeout: u64) -> HashSet<u8> {
         let mut alive_elevators = HashSet::new();
         for (id, elev) in self.elevators.iter() {
-            if (*id != self.id) && (elev.last_received.elapsed().expect("elapsed() failed") > Duration::from_secs(timeout) || elev.detect_if_dead_counter == 0)
+            if (*id != self.id) && (elev.last_received.elapsed().expect("elapsed() failed") > Duration::from_secs(timeout) || elev.is_working)
             {continue;}
             alive_elevators.insert(*id);
         }
@@ -571,6 +575,7 @@ pub fn run(
                     }
                     if elevator.detect_if_dead_counter == 0 {
                         someone_died = true; 
+                        elevator.is_working = false;
                     }
                 }
             }
