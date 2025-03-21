@@ -261,7 +261,7 @@ impl WorldView {
                 //if u.detect_if_dead_counter == 0 {
                     //u.has_request = false;
                 //}
-                u.detect_if_dead_counter = 5;  // clearly reset counter
+                u.detect_if_dead_counter = 10;  // clearly reset counter
                 
                    // reset flag
                 info!("Foreign Elevator {} recovered, resetting detect_if_dead_counter.", foreign_id);
@@ -378,7 +378,7 @@ impl WorldView {
             //}else{
                 //elev.detect_if_dead_counter = 10;
             //}
-            elev.detect_if_dead_counter = 5;
+            elev.detect_if_dead_counter = 10;
              // clearly reset counter on recovery
               // reset request flag clearly
             info!("Own elevator recovered, resetting detect_if_dead_counter.");
@@ -559,17 +559,26 @@ pub fn run(
                     }
                     updated = up;
                 }
-
+                let someone_died = false; 
                 for elevator in world_view.elevators.values_mut() {
                     if elevator.has_request && elevator.detect_if_dead_counter > 0 {
                         elevator.detect_if_dead_counter -= 1;
                         println!{"{}", elevator.detect_if_dead_counter};
+
                         
+                    }
+                    if elevator.detect_if_dead_counter == 0 {
+                        someone_died = true; 
                     }
                 }
             }
         }
+        if someone_died {
+            someone_died_update(&mut world_view);
+            someone_died = false; 
+        }
         if updated && !(humble_counter > 0) {
+            
             inform_everybody(
                 &mut world_view,
                 &sender_tx,
@@ -577,10 +586,32 @@ pub fn run(
                 &lights_tx);
         }
 
+
     }
 }
 
+fn someone_died (
+    world_view: &mut WorldView
+)
+{
+    let (controller_reqs, active_elevators) = world_view.assign_requests(); 
+    for (id, elevator) in world_view.elevators.iter_mut() {
+        if active_elevators.contains(&(*id as i32)) {
+            if !elevator.has_request {
+                elevator.has_request = true;
+                elevator.detect_if_dead_counter = 10; // clearly start at 10
+            }
+            // if already has_request, do not reset counter
+        } else {
+            elevator.has_request = false;
+            if elevator.detect_if_dead_counter > 0 {
+                elevator.detect_if_dead_counter = 10;
+            }
+             
+        }
+    }
 
+}
 fn inform_everybody(
     world_view: &mut WorldView,
     sender_tx: &cbc::Sender<messages::Manager>,
