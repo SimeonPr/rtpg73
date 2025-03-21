@@ -582,7 +582,7 @@ pub fn run(
             }
         }
         if someone_died {
-            someone_died_update(&mut world_view);
+            someone_died_update(&mut world_view, &controller_tx);
         }
         if updated && !(humble_counter > 0) {
             
@@ -598,7 +598,8 @@ pub fn run(
 }
 
 fn someone_died_update (
-    world_view: &mut WorldView
+    world_view: &mut WorldView,
+    controller_tx: &cbc::Sender<messages::Controller>
 )
 {
     let (controller_reqs, active_elevators) = world_view.assign_requests(); 
@@ -617,6 +618,7 @@ fn someone_died_update (
              
         }
     }
+    controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
 
 }
 fn inform_everybody(
