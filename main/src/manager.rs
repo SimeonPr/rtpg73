@@ -100,7 +100,8 @@ pub struct Elevator {
     pub state: ElevatorNetworkState,
     cab_requests: [Request; config::FLOOR_COUNT],
     has_request: bool,
-    detect_if_dead_counter: u8
+    detect_if_dead_counter: u8,
+    is_working: bool
 }
 impl Elevator {
     pub fn new() -> Elevator {
@@ -110,7 +111,8 @@ impl Elevator {
             state: ElevatorNetworkState::new(),
             cab_requests,
             has_request: false,
-            detect_if_dead_counter: 10
+            detect_if_dead_counter: 10,
+            is_working: true
         }
     }
 
@@ -257,11 +259,9 @@ impl WorldView {
             let recovered = (u.state.current_floor != e.state.current_floor)
                          || (u.state.behaviour != e.state.behaviour);
     
-            if recovered || !u.has_request/*&& u.detect_if_dead_counter == 0*/ {
-                //if u.detect_if_dead_counter == 0 {
-                    //u.has_request = false;
-                //}
-                u.detect_if_dead_counter = 5;  // clearly reset counter
+            if recovered /*&& u.detect_if_dead_counter == 0*/ {
+                u.is_working = false;
+                u.detect_if_dead_counter = 10;  // clearly reset counter
                 
                    // reset flag
                 info!("Foreign Elevator {} recovered, resetting detect_if_dead_counter.", foreign_id);
@@ -371,14 +371,9 @@ impl WorldView {
         let recovered = elev.state.current_floor != floor
                      || elev.state.behaviour != behaviour;
     
-        if recovered || !elev.has_request{
-
-            //if elev.detect_if_dead_counter == 0{
-                //elev.has_request = false;
-            //}else{
-                //elev.detect_if_dead_counter = 10;
-            //}
-            elev.detect_if_dead_counter = 5;
+        if recovered{
+            elev.is_working= true;
+            elev.detect_if_dead_counter = 10;
              // clearly reset counter on recovery
               // reset request flag clearly
             info!("Own elevator recovered, resetting detect_if_dead_counter.");
@@ -413,7 +408,7 @@ impl WorldView {
     pub fn get_alive_elevators(&self, timeout: u64) -> HashSet<u8> {
         let mut alive_elevators = HashSet::new();
         for (id, elev) in self.elevators.iter() {
-            if (*id != self.id) && (elev.last_received.elapsed().expect("elapsed() failed") > Duration::from_secs(timeout) || elev.detect_if_dead_counter == 0)
+            if (*id != self.id) && (elev.last_received.elapsed().expect("elapsed() failed") > Duration::from_secs(timeout) || !elev.is_working)
             {continue;}
             alive_elevators.insert(*id);
         }
@@ -547,6 +542,7 @@ pub fn run(
                     updated = up;
                 }
             },
+
             recv(alarm_rx) -> _a => {
                 debug!("Received Alarm");
                 if humble_counter > 0 {
@@ -563,9 +559,10 @@ pub fn run(
                 for elevator in world_view.elevators.values_mut() {
                     if elevator.has_request && elevator.detect_if_dead_counter > 0 {
                         elevator.detect_if_dead_counter -= 1;
-                        println!{"{}", elevator.detect_if_dead_counter};
-                        
+                    }else if elevator.has_request{
+                        elevator.is_working= false;
                     }
+
                 }
             }
         }
@@ -611,3 +608,4 @@ fn inform_everybody(
     let lights_reqs = world_view.get_confirmed_requests();
     lights_tx.send(messages::Controller::Requests(lights_reqs)).expect("send to lights failed");
 }
+
