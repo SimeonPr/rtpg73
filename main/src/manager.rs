@@ -488,8 +488,10 @@ pub fn run(
     info!("Manager up and running...");
     let mut world_view = WorldView::init(id);
     let mut humble_counter = 5;
+    
     loop {
         let mut updated = false;
+        let mut someone_died = false; 
         debug!("Current WorldView: {:#?}", &world_view);
         cbc::select! {
             recv(manager_rx) -> a => {
@@ -559,7 +561,7 @@ pub fn run(
                     }
                     updated = up;
                 }
-                let someone_died = false; 
+                
                 for elevator in world_view.elevators.values_mut() {
                     if elevator.has_request && elevator.detect_if_dead_counter > 0 {
                         elevator.detect_if_dead_counter -= 1;
@@ -575,7 +577,6 @@ pub fn run(
         }
         if someone_died {
             someone_died_update(&mut world_view);
-            someone_died = false; 
         }
         if updated && !(humble_counter > 0) {
             
@@ -590,7 +591,7 @@ pub fn run(
     }
 }
 
-fn someone_died (
+fn someone_died_update (
     world_view: &mut WorldView
 )
 {
