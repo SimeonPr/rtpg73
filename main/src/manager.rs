@@ -421,6 +421,7 @@ impl WorldView {
             {continue;}
             alive_elevators.insert(*id);
         }
+        println!("Alive elevators: {:?}", alive_elevators);
         alive_elevators
     }
     pub fn get_id(&self) -> u8 {
