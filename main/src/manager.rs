@@ -464,8 +464,8 @@ pub fn run(
                                     let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
                                     if up {
                                         world_view.compare_world_views(&new_wv);
-                                        world_view = new_wv;
                                     }
+                                    world_view = new_wv;                                   
                                     updated = up;
                                 }
                             }
