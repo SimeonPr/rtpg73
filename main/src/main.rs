@@ -18,6 +18,21 @@ mod fsm;
 mod config;
 use std::env;
 
+fn get_id_from_args(args: Vec<String>) -> u8 {
+    let mut id: Option<u8> = None;
+    let mut iter = args.iter();
+
+    while let Some(arg) = iter.next() {
+        if arg == "--id" {
+            if let Some(value) = iter.next() {
+                id = value.parse().ok();
+            }
+        }
+    }
+
+    id.unwrap_or(0)
+}
+
 fn main() {
 
     // crash on any thread panic
@@ -28,23 +43,8 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     
-    let mut id: Option<u8> = None;
+    let id: u8 = get_id_from_args(args);
 
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        if arg == "--id" {
-            if let Some(value) = iter.next() {
-                id = value.parse().ok();
-            }
-        }
-    }
-
-    let id = match id {
-        Some(id) => id,
-        _ => {
-            0
-        }
-    };
     info!("Running with ID {}", id);
     env_logger::init();
     info!("Booting application.");
@@ -110,4 +110,28 @@ fn main() {
     let _ = r.join();
     let _ = b.join();
     let _ = a.join();
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_id_from_args_test() {
+        let args = vec!["--id".to_string(), "1".to_string()];
+        assert_eq!(get_id_from_args(args), 1);
+    }
+
+    #[test]
+    fn get_id_from_args_test_panic() {
+        let args = vec!["--id".to_string()];
+        assert_eq!(get_id_from_args(args), 0);
+    }
+
+    #[test]
+    fn get_id_from_args_test_panic2() {
+        let args = vec!["--id".to_string(), "a".to_string()];
+        assert_eq!(get_id_from_args(args), 0);
+    }
 }

@@ -144,3 +144,308 @@ fn ids_with_assigned_calls(parsed_json: &Value) -> Option<Vec<i32>> {
             .collect(),
     )
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // function run_hra_executable
+    #[test]
+    fn test_run_hra_executable() {
+        let json_data = r#"{
+            "hallRequests": [[true, false], [false, true], [false, false], [false, false]],
+            "states": {
+                "id_1": {
+                    "behaviour": "moving",
+                    "floor": 2,
+                    "direction": "up",
+                    "cabRequests": [false, false, true, true]
+                },
+                "id_2": {
+                    "behaviour": "idle",
+                    "floor": 0,
+                    "direction": "stop",
+                    "cabRequests": [false, false, false, false]
+                }
+            }
+        }"#;
+
+        let output = run_hra_executable("./src/hall_request_assigner/hall_request_assigner", json_data);
+        assert!(output.is_some());
+
+        let output_str = String::from_utf8(output.unwrap()).unwrap();
+        let output_json: serde_json::Value = serde_json::from_str(&output_str).unwrap();
+        let expected_output = serde_json::json!({
+            "id_1": [[false, false], [false, false], [false, false], [false, false]],
+            "id_2": [[true, false], [false, true], [false, false], [false, false]]
+          });
+        assert_eq!(output_json, expected_output);
+    }
+
+    #[test]
+    fn test_run_hra_executable_invalid_json() {
+        let json_data = r#"{
+            "hallRequests": [[true, false], [false, true], [false, false], [false, false]],
+            "states": {
+                "id_1": {
+                    "behaviour": "moving",
+                    "floor": 2,
+                    "direction": "up",
+                    "cabRequests": [false, false, true, true]
+                },
+                "id_2": {
+                    "behaviour": "idle",
+                    "floor": 0,
+                    "direction": "stop",
+                    "cabRequests": [false, false, false, false]
+                }
+            }
+        "#;
+    
+        let output = run_hra_executable("./src/hall_request_assigner/hall_request_assigner", json_data);
+        assert!(output.is_none());
+    }
+
+    #[test]
+    fn test_run_hra_executable_invalid_executable() {
+        let json_data = r#"{
+            "hallRequests": [[true, false], [false, true], [false, false], [false, false]],
+            "states": {
+                "id_1": {
+                    "behaviour": "moving",
+                    "floor": 2,
+                    "direction": "up",
+                    "cabRequests": [false, false, true, true]
+                },
+                "id_2": {
+                    "behaviour": "idle",
+                    "floor": 0,
+                    "direction": "stop",
+                    "cabRequests": [false, false, false, false]
+                }
+            }
+        }"#;
+    
+        let output = run_hra_executable("invalid_executable", json_data);
+        assert!(output.is_none());
+    }
+
+    // function elevator_algorithm
+    #[test]
+    fn test_elevator_algorithm_one_elevator() {
+        let world_view = WorldView::init(1);
+        
+        // Set up elevator 1 state
+        let (mut world_view, _) = world_view.handle_elevator_state(
+            fsm::Dirn::Up,
+            fsm::ElevatorBehaviour::Moving,
+            2
+        );
+    
+        // Set up elevator 2 state
+        let mut elevators = world_view.get_elevators();
+        let mut elevator1 = elevators.get(&1).unwrap().clone(); // Use ID = 1
+        elevator1.state.behaviour = fsm::ElevatorBehaviour::Idle;
+        elevator1.state.current_floor = 0;
+        elevator1.state.dirn = fsm::Dirn::Stop;
+        elevators.insert(1, elevator1); // Use ID = 1
+        world_view = WorldView {
+            id: world_view.get_id(),
+            elevators,
+            hall_requests: world_view.get_hall_requests()
+        };
+    
+        // Set hall requests
+        let mut hall_requests = world_view.get_hall_requests();
+        hall_requests[0][0].set_to(RequestState::Confirmed, world_view.get_id());
+        hall_requests[1][1].set_to(RequestState::Confirmed, world_view.get_id());
+        world_view = WorldView {
+            id: world_view.get_id(),
+            elevators: world_view.get_elevators(),
+            hall_requests
+        };
+    
+        // Debug output
+        println!("WorldView before algorithm:");
+        println!("Elevators: {:?}", world_view.get_elevators());
+        println!("Hall Requests: {:?}", world_view.get_hall_requests());
+    
+        let result = elevator_algorithm(&world_view);
+        println!("Algorithm result: {:?}", result);
+    
+        assert!(result.is_some(), "elevator_algorithm returned None, expected Some");
+    
+        if let Some((controller_reqs, assigned_elevators)) = result {
+            assert_eq!(controller_reqs, [
+                [true, false, false],
+                [false, true, false],
+                [false, false, false],
+                [false, false, false]
+            ]);
+            assert_eq!(assigned_elevators, vec![1]);
+        }
+    }
+
+    #[test]
+    fn test_elevator_algorithm_no_alive_elevators() {
+        let world_view = WorldView::init(1);
+        let result = elevator_algorithm(&world_view);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_elevator_algorithm_no_hall_requests() {
+        let world_view = WorldView::init(1);
+        
+        // Set up elevator states but no hall requests
+        let (world_view, _) = world_view.handle_elevator_state(
+            fsm::Dirn::Stop,
+            fsm::ElevatorBehaviour::Idle,
+            0
+        );
+
+        let result = elevator_algorithm(&world_view);
+        assert!(result.is_some());
+        
+        let (controller_reqs, assigned_elevators) = result.unwrap();
+        assert_eq!(controller_reqs, [
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [false, false, false]
+        ]);
+        assert!(assigned_elevators.is_empty());
+    }
+
+
+    // function covert_json_to_controller_reqs
+    #[test]
+    fn test_covert_json_to_controller_reqs() {
+        let json_data = r#"{
+            "id_1": [[false, false], [false, false], [false, false], [false, false]],
+            "id_2": [[true, false], [false, true], [false, false], [false, false]]
+        }"#;
+
+        let result = covert_json_to_controller_reqs(json_data, 2).unwrap();
+        let expected_output = (
+            [
+                [true, false, false],
+                [false, true, false],
+                [false, false, false],
+                [false, false, false]
+            ],
+            vec![2]
+        );
+        assert_eq!(result, expected_output);
+    }
+
+    #[test]
+    fn test_covert_json_to_controller_reqs_invalid_json() {
+        let json_data = r#"{
+            "id_1": [[false, false], [false, false], [false, false], [false, false],
+            "id_2": [[true, false], [false, true], [false, false], [false, false]]
+        }"#;
+
+        let result = covert_json_to_controller_reqs(json_data, 2);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_covert_json_to_controller_reqs_invalid_id() {
+        let json_data = r#"{
+            "id_1": [[false, false], [false, false], [false, false], [false, false]],
+            "id_2": [[true, false], [false, true], [false, false], [false, false]]
+        }"#;
+
+        let result = covert_json_to_controller_reqs(json_data, 3);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_covert_json_to_controller_reqs_invalid_pair() {
+        let json_data = r#"{
+            "id_1": [[false, false], [false, false], [false, false], [false, false]],
+            "id_2": [[true, false], [false, true], [false, false], [false, false]]
+        }"#;
+
+        let result = covert_json_to_controller_reqs(json_data, 2).unwrap();
+        let expected_output = (
+            [
+                [true, false, false],
+                [false, true, false],
+                [false, false, false],
+                [false, false, false]
+            ],
+            vec![2]
+        );
+        assert_eq!(result, expected_output);
+    }
+
+    // function ids_with_assigned_calls
+    #[test]
+    fn test_ids_with_assigned_calls() {
+        let json = r#"{
+            "id_1": [[true, false], [false, false], [false, false], [false, false]],
+            "id_2": [[false, false], [false, false], [false, false], [false, false]],
+            "id_3": [[false, false], [false, false], [false, false], [false, false]]
+        }"#;
+
+        let parsed_json: Value = serde_json::from_str(json).unwrap();
+        let result = ids_with_assigned_calls(&parsed_json).unwrap();
+        assert_eq!(result, vec![1]);
+    }
+
+    #[test]
+    fn test_ids_with_assigned_calls_multiple_ids() {
+        let json = r#"{
+            "id_1": [[true, false], [false, false], [false, false], [false, false]],
+            "id_2": [[false, false], [false, false], [false, false], [false, false]],
+            "id_3": [[true, false], [false, false], [false, false], [false, false]]
+        }"#;
+
+        let parsed_json: Value = serde_json::from_str(json).unwrap();
+        let result = ids_with_assigned_calls(&parsed_json).unwrap();
+        assert_eq!(result, vec![1, 3]);
+    }
+
+    #[test]
+    fn test_ids_with_assigned_calls_no_true() {
+        let json = r#"{
+            "id_1": [[false, false], [false, false], [false, false], [false, false]],
+            "id_2": [[false, false], [false, false], [false, false], [false, false]],
+            "id_3": [[false, false], [false, false], [false, false], [false, false]]
+        }"#;
+
+        let parsed_json: Value = serde_json::from_str(json).unwrap();
+        let result = ids_with_assigned_calls(&parsed_json).unwrap();
+        assert_eq!(result, Vec::<i32>::new());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_ids_with_assigned_calls_invalid_json() {
+        let json = r#"{
+            "id1": [[true, false], [false, false], [false, false], [false, false]],
+            "id_2": [[false, false], [false, false], [false, false], [false, false]],
+            "id_3": [[false, false], [false, false], [false, false] [false, false]]
+        }"#;
+
+        let parsed_json: Value = serde_json::from_str(json).unwrap();
+        let result = ids_with_assigned_calls(&parsed_json).unwrap();
+        assert_eq!(result, vec![1, 3]);
+    }
+
+    #[test]
+    fn ids_with_assigned_calls_wrong_id() {
+        let json = r#"{
+            "id1": [[true, false], [false, false], [false, false], [false, false]],
+            "id_2": [[false, false], [false, false], [false, false], [false, false]],
+            "id_3": [[false, false], [false, false], [false, false], [false, false]]
+        }"#;
+
+        let parsed_json: Value = serde_json::from_str(json).unwrap();
+        let result = ids_with_assigned_calls(&parsed_json).unwrap();
+        assert!(result.is_empty()); 
+    }
+
+}
