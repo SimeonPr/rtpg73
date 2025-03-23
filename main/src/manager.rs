@@ -430,6 +430,7 @@ pub fn run(
     info!("Manager up and running...");
     let mut world_view = WorldView::init(id);
     let mut humble_counter = 5;
+    let mut foreign_instants: HashMap<u8, std::time::SystemTime> = HashMap::new();
     loop {
         let mut updated = false;
         debug!("Current WorldView: {:#?}", &world_view);
@@ -440,21 +441,36 @@ pub fn run(
                     messages::Manager::Ping => {
                         debug!("Received Ping");
                     },
-                    messages::Manager::HeartBeat(foreign_world_view) => {
+                    messages::Manager::HeartBeat(time_stamp, foreign_world_view) => {
                         debug!("Received WorldView");
-                        if foreign_world_view.id != world_view.get_id() {
-                            if humble_counter > 0 {
-                                let new_wv = world_view.handle_humbly(foreign_world_view);
-                                world_view = new_wv;
-                                humble_counter = 0;
-                            } else {
-                                let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
-                                if up {
-                                    world_view.compare_world_views(&new_wv);
-                                    world_view = new_wv;
-                                }
-                                updated = up;
+                        if foreign_world_view.get_id() != world_view.get_id() {
+                            let mut new = false;
+                            if !foreign_instants.contains_key(&foreign_world_view.get_id()) {
+                                debug!("INSERTING TIMESTAMP");
+                                foreign_instants.insert(foreign_world_view.get_id(), time_stamp);
+                                new = true;
                             }
+                            let old_ts = foreign_instants.get(&foreign_world_view.get_id()).unwrap();
+                            // debug!("new: {new}, old_ts: {:?}, time_stamp: {:?}, t1>=t2: {:?}", old_ts, time_stamp, *old_ts >= time_stamp);
+                            if *old_ts >= time_stamp && !new {
+                                debug!("RECEIVED OLD PACKET");
+                            } else {
+                                foreign_instants.insert(foreign_world_view.get_id(), time_stamp);
+                                if humble_counter > 0 {
+                                    let new_wv = world_view.handle_humbly(foreign_world_view);
+                                    world_view = new_wv;
+                                    humble_counter = 0;
+                                } else {
+                                    let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
+                                    if up {
+                                        world_view.compare_world_views(&new_wv);
+                                        world_view = new_wv;
+                                    }
+                                    updated = up;
+                                }
+                            }
+                        } else {
+                            debug!("RECEIVED FROM MYSELF");
                         }
                     },
                     messages::Manager::ElevatorState(dirn, behaviour, floor) => {
@@ -522,7 +538,7 @@ fn inform_everybody(
     lights_tx: &cbc::Sender<messages::Controller>
 ) {
     let world_view_clone = world_view.clone();
-    sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).expect("send to sender failed");
+    sender_tx.send(messages::Manager::HeartBeat(std::time::SystemTime::now(), world_view_clone)).expect("send to sender failed");
     
     let controller_reqs = world_view.assign_requests();
     controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
