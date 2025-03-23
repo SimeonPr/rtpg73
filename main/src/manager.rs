@@ -223,11 +223,10 @@ impl WorldView {
         let foreign_elevators= foreign_world_view.get_elevators();
 
         // add elevators that we dont already know of
-        for key in foreign_world_view.elevators.keys() {
+        for (key, elev) in foreign_world_view.elevators.iter() {
             if !wv_clone.elevators.contains_key(key) {
                 info!("NewElevator(id: {})", key);
-                let u = foreign_world_view.elevators.get(&key).expect("key should have been available");
-                wv_clone.elevators.insert(*key, u.clone());
+                wv_clone.elevators.insert(*key, elev.clone());
             }
         }
 
