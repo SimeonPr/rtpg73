@@ -42,27 +42,13 @@ impl Request {
     }
     pub fn merge(&mut self, r2: &Request, id: u8) -> bool {
         let mut updated: bool = false;
-        let new_state = match self.state {
-            RequestState::None => {
-                match r2.state {
-                    RequestState::Unconfirmed => RequestState::Unconfirmed,
-                    _ => self.state
-                }
-            },
-            RequestState::Unconfirmed => {
-                match r2.state {
-                    RequestState::Confirmed => RequestState::Confirmed,
-                    _ => self.state
-                }
-            },
-            RequestState::Confirmed => {
-                match r2.state {
-                    RequestState::None => RequestState::None,
-                    _ => self.state
-                }
-            }
+        let new_state = match (self.state, r2.state) {
+            (RequestState::None, RequestState::Unconfirmed) => RequestState::Unconfirmed,
+            (RequestState::Unconfirmed, RequestState::Confirmed) => RequestState::Confirmed,
+            (RequestState::Confirmed, RequestState::None) => RequestState::None,
+            _ => self.state
         };
-        if self.state != new_state { // state should change
+        if self.state != new_state { // state changed
             updated = true;
             self.state = new_state;
             self.acks = r2.acks.clone();
