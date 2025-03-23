@@ -515,11 +515,12 @@ pub fn run(
                         world_view.compare_world_views(&new_wv);
                         world_view = new_wv;
                     }
-                    updated = up;
+                    updated = true;
                 }
             }
         }
-        if updated && !(humble_counter > 0) {
+        if updated && humble_counter <= 0 {
+            debug!("INFORMING EVERYBODY");
             inform_everybody(
                 &world_view,
                 &sender_tx,
