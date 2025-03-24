@@ -544,7 +544,7 @@ pub fn run(
 
     loop {
         let mut updated = false;
-        let mut alarm = false;
+        
         debug!("Current WorldView: {:#?}", &world_view);
         cbc::select! {
             recv(manager_rx) -> a => {
@@ -619,12 +619,12 @@ pub fn run(
                 if dead_changed {
                     updated |= true;
                 }
-                alarm = true;
+              
             }
         } // end select
 
         // Only send messages when humble logic allows.
-        if  alarm && humble_counter == 0{
+        if updated && humble_counter == 0{
             
             let (heartbeat, controller_msg, lights_msg) = prepare_inform_messages(world_view.clone());
             sender_tx.send(heartbeat).expect("send to sender failed");
