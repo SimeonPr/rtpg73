@@ -396,10 +396,7 @@ impl WorldView {
             {
                 continue;
             }
-            if !elev.is_working
-            {
-                continue;
-            }
+            
             alive.insert(*id);
 
         }
