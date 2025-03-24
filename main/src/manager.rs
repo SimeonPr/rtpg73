@@ -546,7 +546,7 @@ pub fn run(
     let mut humble_counter = 5;
 
     loop {
-        //let mut updated = false;
+        let mut updated = false;
         debug!("Current WorldView: {:#?}", &world_view);
         cbc::select! {
             recv(manager_rx) -> a => {
@@ -567,7 +567,7 @@ pub fn run(
                                     world_view.compare_world_views(&new_wv);
                                     world_view = new_wv;
                                 }
-                                //updated |= up;
+                                updated |= up;
                             }
                         }
                     },
@@ -578,7 +578,7 @@ pub fn run(
                             world_view.compare_world_views(&new_wv);
                             world_view = new_wv;
                         }
-                        //updated = true;
+                        updated = true;
                     },
                     messages::Manager::ClearRequest(floor, should_clear) => {
                         debug!("Received ClearRequest");
@@ -587,7 +587,7 @@ pub fn run(
                             world_view.compare_world_views(&new_wv);
                             world_view = new_wv;
                         }
-                        //updated = up;
+                        updated = up;
                     }
                 }
             },
@@ -600,7 +600,7 @@ pub fn run(
                         world_view.compare_world_views(&new_wv);
                         world_view = new_wv;
                     }
-                    //updated = up;
+                    updated = up;
                 }
             },
             recv(alarm_rx) -> _a => {
@@ -612,20 +612,20 @@ pub fn run(
                     if up_barrier {
                         world_view.compare_world_views(&new_wv);
                         world_view = new_wv;
-                        //updated |= true;
+                        updated |= true;
                     }
                 }
                 // Update dead counters and reassign calls.
                 let (new_wv, dead_changed, _controller_reqs, _active_elevators) = update_dead_elevators(world_view);
                 world_view = new_wv;
-                /*if dead_changed {
+                if dead_changed {
                     updated |= true;
-                }*/
+                }
             }
         } // end select
 
         // Only send messages when humble logic allows.
-        if /*updated && */humble_counter == 0 {
+        if updated && humble_counter == 0 {
             let (heartbeat, controller_msg, lights_msg) = prepare_inform_messages(world_view.clone());
             sender_tx.send(heartbeat).expect("send to sender failed");
             controller_tx.send(controller_msg).expect("send to controller failed");
