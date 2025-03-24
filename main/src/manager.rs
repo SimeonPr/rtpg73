@@ -443,13 +443,7 @@ impl WorldView {
 }
 
 
-/// Decrement the detect_if_dead_counter for each elevator that has a pending request.
-/// If an elevator’s counter reaches zero, mark it as not working.
-/// Then, reassign call flags based on the active elevators.
-/// Returns:
-/// - The updated WorldView.
-/// - A boolean flag that is true if any elevator’s counter or working flag changed.
-/// - The controller request set and active elevator IDs.
+
 fn update_dead_elevators(
     world_view: WorldView
 ) -> (WorldView, bool, fsm::ControllerRequests, Vec<i32>) {
