@@ -69,7 +69,7 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequ
     };
     
     let json_string = serde_json::to_string(&input).ok()?;
-    let hra_executable = "./src/hall_request_assigner/hall_request_assigner";
+    let hra_executable = "./src/hall_request_assigner/hall_request_assigner.exe";
     
     let output = run_hra_executable(&hra_executable, &json_string)?;
     
