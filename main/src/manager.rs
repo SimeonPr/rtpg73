@@ -624,7 +624,7 @@ pub fn run(
         } // end select
 
         // Only send messages when humble logic allows.
-        if (updated && humble_counter == 0) || (alarm && humble_counter == 0){
+        if  alarm && humble_counter == 0{
             
             let (heartbeat, controller_msg, lights_msg) = prepare_inform_messages(world_view.clone());
             sender_tx.send(heartbeat).expect("send to sender failed");
