@@ -392,7 +392,7 @@ impl WorldView {
         for (id, elev) in self.elevators.iter() {
             if (*id != self.id)
                 && (elev.last_received.elapsed().expect("elapsed() failed")
-                    > Duration::from_secs(timeout))
+                    > Duration::from_secs(timeout) && !elev.is_working)
             {
                 continue;
             }
