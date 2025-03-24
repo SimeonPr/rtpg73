@@ -36,8 +36,12 @@ fn run_hra_executable(executable: &str, input_json: &str) -> Option<Vec<u8>> {
 
 
 pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequests, Vec<i32>)>{
-    let mut states = HashMap::new();
+    
     let alive_elevators = world_view.get_alive_elevators(2);
+    if alive_elevators.is_empty() {
+        return Some(([[false; config::CALL_COUNT]; config::FLOOR_COUNT], vec![]));
+    }
+    let mut states = HashMap::new();
     let elevators = world_view.get_elevators();
     for id in alive_elevators.iter() {
         let elevator = elevators.get(id)?;

@@ -239,13 +239,16 @@ impl WorldView {
             if let Some(u) = new_wv.elevators.get_mut(&foreign_id) {
                 let recovered = (u.state.current_floor != e.state.current_floor)
                     || (u.state.behaviour != e.state.behaviour);
-                if recovered {
-                    u.is_working = true;
-                    u.detect_if_dead_counter = 10;
+                if recovered || !u.has_request{
+                    if u.detect_if_dead_counter == 0{
                     info!(
                         "Foreign Elevator {} recovered, resetting detect_if_dead_counter.",
                         foreign_id
                     );
+                    }
+                    if recovered {u.is_working = true;}
+                    u.detect_if_dead_counter = 10;
+                    
                 }
                 u.last_received = current_time;
                 u.state = e.state;
@@ -287,7 +290,7 @@ impl WorldView {
         for floor in 0..config::FLOOR_COUNT {
             for dir in 0..2 {
                 if let RequestState::Unconfirmed = new_wv.hall_requests[floor][dir].state {
-                    if alive_elevators.is_subset(&new_wv.hall_requests[floor][dir].acks) {
+                    if alive_elevators.is_subset(&new_wv.hall_requests[floor][dir].acks) && !alive_elevators.is_empty() {
                         new_wv.hall_requests[floor][dir].set_to(RequestState::Confirmed, new_wv.id);
                         updated = true;
                     }
@@ -297,7 +300,8 @@ impl WorldView {
         for (_, elev) in new_wv.elevators.iter_mut() {
             for floor in 0..config::FLOOR_COUNT {
                 if let RequestState::Unconfirmed = elev.cab_requests[floor].state {
-                    if alive_elevators.is_subset(&elev.cab_requests[floor].acks) {
+                    
+                    if alive_elevators.is_subset(&elev.cab_requests[floor].acks) && !alive_elevators.is_empty() {
                         elev.cab_requests[floor].set_to(RequestState::Confirmed, new_wv.id);
                         updated = true;
                     }
@@ -350,10 +354,13 @@ impl WorldView {
         if let Some(elev) = new_wv.elevators.get_mut(&new_wv.id) {
             let recovered = (elev.state.current_floor != floor)
                 || (elev.state.behaviour != behaviour);
-            if recovered {
-                elev.is_working = true;
+            if recovered || !elev.has_request {
+                if recovered {elev.is_working = true;}
+                if elev.detect_if_dead_counter == 0 {
+                    info!("Own elevator recovered, resetting detect_if_dead_counter.");
+                }
                 elev.detect_if_dead_counter = 10;
-                info!("Own elevator recovered, resetting detect_if_dead_counter.");
+                
             }
             elev.state.dirn = dirn;
             elev.state.behaviour = behaviour;
@@ -385,13 +392,21 @@ impl WorldView {
         for (id, elev) in self.elevators.iter() {
             if (*id != self.id)
                 && (elev.last_received.elapsed().expect("elapsed() failed")
-                    > Duration::from_secs(timeout)
-                    && !elev.is_working)
+                    > Duration::from_secs(timeout))
+            {
+                continue;
+            }
+            if !elev.is_working
             {
                 continue;
             }
             alive.insert(*id);
+
         }
+        
+        println!("Alive elevators {:?}", alive);
+        
+        
         alive
     }
 
@@ -447,7 +462,6 @@ impl WorldView {
 fn update_dead_elevators(
     world_view: WorldView
 ) -> (WorldView, bool, fsm::ControllerRequests, Vec<i32>) {
-    let old_wv = world_view.clone();
     let mut new_wv = world_view;
     let mut changed = false;
     
@@ -532,7 +546,7 @@ pub fn run(
     let mut humble_counter = 5;
 
     loop {
-        let mut updated = false;
+        //let mut updated = false;
         debug!("Current WorldView: {:#?}", &world_view);
         cbc::select! {
             recv(manager_rx) -> a => {
@@ -546,14 +560,14 @@ pub fn run(
                         if foreign_world_view.id != world_view.get_id() {
                             if humble_counter > 0 {
                                 world_view = world_view.handle_humbly(foreign_world_view);
-                                humble_counter = 0;
+                                humble_counter -=1;
                             } else {
                                 let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
                                 if up {
                                     world_view.compare_world_views(&new_wv);
                                     world_view = new_wv;
                                 }
-                                updated |= up;
+                                //updated |= up;
                             }
                         }
                     },
@@ -564,7 +578,7 @@ pub fn run(
                             world_view.compare_world_views(&new_wv);
                             world_view = new_wv;
                         }
-                        updated = true;
+                        //updated = true;
                     },
                     messages::Manager::ClearRequest(floor, should_clear) => {
                         debug!("Received ClearRequest");
@@ -573,7 +587,7 @@ pub fn run(
                             world_view.compare_world_views(&new_wv);
                             world_view = new_wv;
                         }
-                        updated = up;
+                        //updated = up;
                     }
                 }
             },
@@ -586,7 +600,7 @@ pub fn run(
                         world_view.compare_world_views(&new_wv);
                         world_view = new_wv;
                     }
-                    updated = up;
+                    //updated = up;
                 }
             },
             recv(alarm_rx) -> _a => {
@@ -598,20 +612,20 @@ pub fn run(
                     if up_barrier {
                         world_view.compare_world_views(&new_wv);
                         world_view = new_wv;
-                        updated |= true;
+                        //updated |= true;
                     }
                 }
                 // Update dead counters and reassign calls.
                 let (new_wv, dead_changed, _controller_reqs, _active_elevators) = update_dead_elevators(world_view);
                 world_view = new_wv;
-                if dead_changed {
+                /*if dead_changed {
                     updated |= true;
-                }
+                }*/
             }
         } // end select
 
         // Only send messages when humble logic allows.
-        if updated && humble_counter == 0 {
+        if /*updated && */humble_counter == 0 {
             let (heartbeat, controller_msg, lights_msg) = prepare_inform_messages(world_view.clone());
             sender_tx.send(heartbeat).expect("send to sender failed");
             controller_tx.send(controller_msg).expect("send to controller failed");

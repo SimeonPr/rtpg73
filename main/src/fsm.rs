@@ -120,6 +120,9 @@ impl ElevatorState {
                     ElevatorBehaviour::Moving | ElevatorBehaviour::Idle => {
                         self.connection.door_light(false);
                         self.connection.motor_direction(self.dirn as u8);
+                        manager_tx.send(
+                            messages::Manager::ElevatorState(self.dirn, self.behaviour, self.floor)
+                        ).expect("couldn't send ElevatorState");
                     }
                 }
             },
