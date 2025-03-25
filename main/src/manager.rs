@@ -569,18 +569,20 @@ pub fn run(
                         elevator.is_working = false; 
                     }
                 }
+                for elevator in world_view.elevators.values_mut() {
+                    elevator.has_request = false;
+                }
                 let (_, active_elevators) = world_view.assign_requests(); 
+                
+                // 2. Explicitly set has_request = true only for assigned elevators
                 for (id, elevator) in world_view.elevators.iter_mut() {
                     if active_elevators.contains(&(*id as i32)) {
-                        if !elevator.has_request {
-                            elevator.has_request = true;
-                            updated = true;
-                        }   
-                        // if already has_request, do not reset counter
-                    } else {
-                        elevator.has_request = false;     
+                        elevator.has_request = true;
+                    }else{
+                        elevator.last_moved == SystemTime.now();
                     }
                 }
+    
                 
             }
         }
@@ -601,7 +603,7 @@ pub fn run(
                     // if already has_request, do not reset counter
                 } else {
                     elevator.has_request = false;
-                     
+                    elevator.last_moved = SystemTime::now();
                 }
             }
             controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
