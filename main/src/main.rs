@@ -90,7 +90,8 @@ fn main() {
     let elev = elevator_connection.clone();
     let c = spawn(move || controller::run(controller_rx, manager_tx_clone, elev));
     // spawn sender
-    let s = spawn(move || sender::run(sender_rx));
+    let manager_tx_clone = manager_tx.clone();
+    let s = spawn(move || sender::run(sender_rx, manager_tx_clone));
     // spawn receiver
     let manager_tx_clone = manager_tx.clone();
     let r = spawn(move || receiver::run(manager_tx_clone));

@@ -428,20 +428,34 @@ pub fn run(
 ) {
     info!("Manager up and running...");
     let mut world_view = WorldView::init(id);
+    let mut network_available = true;
     let mut humble_counter = 5;
     let mut foreign_instants: HashMap<u8, std::time::SystemTime> = HashMap::new();
     loop {
         let mut updated = false;
-        debug!("Current WorldView: {:#?}", &world_view);
         cbc::select! {
             recv(manager_rx) -> a => {
                 let message = a.expect("couldn't get message");
                 match message {
-                    messages::Manager::Ping => {
-                        debug!("Received Ping");
+                    messages::Manager::Ping(id) => {
+                        debug!("Received Ping({})", id);
+                        network_available = true;
+                        if world_view.get_id() != id {
+                            sender_tx.send(messages::Manager::Pong(world_view.get_id())).expect("send to sender failed");
+                        }
+                    },
+                    messages::Manager::Pong(id) => {
+                        debug!("Received Pong({})", id);
+                        network_available = true;
+                    },
+                    messages::Manager::NetworkError => {
+                        debug!("Received NetworkError");
+                        network_available = false;
+                        humble_counter = 5;
                     },
                     messages::Manager::HeartBeat(time_stamp, foreign_world_view) => {
                         debug!("Received WorldView");
+                        network_available = true;
                         if foreign_world_view.get_id() != world_view.get_id() {
                             let mut new = false;
                             if !foreign_instants.contains_key(&foreign_world_view.get_id()) {
@@ -450,7 +464,6 @@ pub fn run(
                                 new = true;
                             }
                             let old_ts = foreign_instants.get(&foreign_world_view.get_id()).unwrap();
-                            // debug!("new: {new}, old_ts: {:?}, time_stamp: {:?}, t1>=t2: {:?}", old_ts, time_stamp, *old_ts >= time_stamp);
                             if *old_ts >= time_stamp && !new {
                                 debug!("RECEIVED OLD PACKET");
                             } else {
@@ -495,7 +508,7 @@ pub fn run(
             recv(call_button_rx) -> a => {
                 debug!("Received ButtonPress");
                 let button_press = a.expect("couldn't get message");
-                if humble_counter == 0 {
+                if humble_counter == 0 && network_available {
                     let (new_wv, up) = world_view.handle_button_press(&button_press);
                     if up {
                         world_view.compare_world_views(&new_wv);
@@ -506,7 +519,10 @@ pub fn run(
             },
             recv(alarm_rx) -> _a => {
                 debug!("Received Alarm");
-                if humble_counter > 0 {
+                debug!("network_available: {}, humble_counter: {}", network_available, humble_counter);
+                if !network_available {
+                    sender_tx.send(messages::Manager::Ping(world_view.get_id())).expect("send to sender failed");
+                } else if humble_counter > 0 {
                     humble_counter -= 1;
                 } else {
                     let (new_wv, up) = world_view.update_states_at_barrier();
@@ -518,7 +534,7 @@ pub fn run(
                 }
             }
         }
-        if updated && humble_counter <= 0 {
+        if updated && humble_counter <= 0 && network_available {
             debug!("INFORMING EVERYBODY");
             inform_everybody(
                 &world_view,

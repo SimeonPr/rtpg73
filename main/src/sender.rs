@@ -7,7 +7,10 @@ use log::{debug, info, error};
 use crate::messages;
 use bincode;
 
-pub fn run(rx: cbc::Receiver<messages::Manager>) {
+pub fn run(
+    rx: cbc::Receiver<messages::Manager>,
+    manager_tx: cbc::Sender<messages::Manager>
+) {
     debug!("Sender up and running...");
     let addr: SocketAddr = "0.0.0.0:0".parse().expect("address should be parseable");
     let destination_addr: SocketAddr = "255.255.255.255:4567".parse().expect("address should be parseable");
@@ -24,6 +27,7 @@ pub fn run(rx: cbc::Receiver<messages::Manager>) {
                 match socket.send_to(&serialized, destination_addr) {
                     Err(e) => {
                         error!("broadcast on network failed: {}", e);
+                        manager_tx.send(messages::Manager::NetworkError).expect("channel should work");
                         continue;
                     },
                     _ => ()
