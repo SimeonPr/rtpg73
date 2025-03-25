@@ -213,32 +213,33 @@ impl WorldView {
 
     // Merge our local state into the foreign world view without losing cab calls.
     pub fn handle_humbly(&self, foreign_world_view: WorldView) -> WorldView {
-        let mut new_wv = foreign_world_view;
+        let mut new_wv = self.clone();
         let id = self.id;
     
-        // Merge local cab requests into foreign view to recover after crash
-        if let Some(foreign_elev) = new_wv.elevators.get_mut(&id) {
-            if let Some(local_elev) = self.elevators.get(&id) {
+        if let Some(local_elev) = new_wv.elevators.get_mut(&id) {
+            if let Some(foreign_elev) = foreign_world_view.elevators.get(&id) {
                 for floor in 0..config::FLOOR_COUNT {
-                    let foreign_request = &mut foreign_elev.cab_requests[floor];
-                    let local_request = &local_elev.cab_requests[floor];
-    
-                    foreign_request.merge(local_request, id);
+                    local_elev.cab_requests[floor].merge(&foreign_elev.cab_requests[floor], id);
                 }
-                // Restore essential operational flags
-                foreign_elev.last_received = SystemTime::now();
-                foreign_elev.is_working = true;
-                foreign_elev.detect_if_dead_counter = 10;
-                foreign_elev.has_request = true;
             }
-        } else if let Some(local_elev) = self.elevators.get(&id) {
-            // Elevator was completely unknown; re-add it entirely
-            new_wv.elevators.insert(id, local_elev.clone());
+            local_elev.last_received = SystemTime::now();
+            local_elev.is_working = true;
+            local_elev.detect_if_dead_counter = 10;
+            local_elev.has_request = true;
+        } else if let Some(foreign_elev) = foreign_world_view.elevators.get(&id) {
+            new_wv.elevators.insert(id, foreign_elev.clone());
         }
-        new_wv.id = id;
+    
+        // Merge hall requests as well
+        for floor in 0..config::FLOOR_COUNT {
+            for dir in 0..2 {
+                new_wv.hall_requests[floor][dir].merge(&foreign_world_view.hall_requests[floor][dir], id);
+            }
+        }
+    
         new_wv
     }
-
+    
     pub fn handle_foreign_world_view(&self, foreign_world_view: WorldView) -> (WorldView, bool) {
         let mut new_wv = self.clone();
         let mut updated = false;
@@ -413,18 +414,17 @@ impl WorldView {
     pub fn get_alive_elevators(&self, timeout: u64) -> HashSet<u8> {
         let mut alive = HashSet::new();
         for (id, elev) in self.elevators.iter() {
-            // For non-local elevators, if too much time has elapsed or dead counter is zero, skip.
             if (*id != self.id)
                 && (elev.last_received.elapsed().expect("elapsed() failed") > Duration::from_secs(timeout)
                     && elev.detect_if_dead_counter == 0)
             {
                 continue;
             }
-            // We assume the local elevator is always alive.
             alive.insert(*id);
         }
         alive
     }
+
 
     pub fn get_id(&self) -> u8 {
         self.id
@@ -553,14 +553,18 @@ pub fn run(
                     if up {
                         world_view.compare_world_views(&new_wv);
                         world_view = new_wv;
+                        updated = true;
                     }
-                    updated |= up;
                 }
-                // Decrement dead counters for elevators that have pending requests.
+                // Decrement dead counters and set updated if a counter reaches zero
                 for elevator in world_view.elevators.values_mut() {
                     if elevator.has_request && elevator.detect_if_dead_counter > 0 {
                         elevator.detect_if_dead_counter -= 1;
-                        
+                        if elevator.detect_if_dead_counter == 0 {
+                            elevator.is_working = false;
+                            updated = true; // Crucial line added here!
+                            info!("Elevator marked dead, triggering update.");
+                        }
                     }
                 }
             }
