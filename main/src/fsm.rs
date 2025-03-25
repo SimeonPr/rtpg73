@@ -144,7 +144,6 @@ impl ElevatorState {
                     self.connection.door_light(true);
                     self.requests_clear_at_current_floor(&manager_tx);
                     self.start_time_out_thread();
-                    self.set_all_lights();
                     self.behaviour = ElevatorBehaviour::DoorOpen;
                 }
             }
@@ -166,16 +165,7 @@ impl ElevatorState {
             timer_tx_clone.send(true).expect("couldn't send to timer");
         });
     }
-    
-    fn set_all_lights(&self) {
-        trace!("set_all_lights");
-        for f in 0..config::FLOOR_COUNT {
-            for b in 0..CALL_COUNT {
-                self.connection.call_button_light(f as u8, b as u8, self.requests[f as usize][b as usize]);
-            }
-        }
-    }
-    
+        
     fn requests_choose_direction(&mut self) -> DirectionBehaviourPair {
         trace!("requests_choose_direction");
         match self.dirn {

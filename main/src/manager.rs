@@ -560,7 +560,7 @@ pub fn run(
                 for (id, elevator) in world_view.elevators.iter_mut() {
                     if elevator.has_request && elevator.last_moved.elapsed().expect("elapsed() failed") > Duration::from_secs(10) {
                         if elevator.is_working {
-                            println!("elevator {} is not working", id);
+                            info!("Elevator {} is not working", id);
                             updated = true;
                         }
                         elevator.is_working = false;
@@ -570,41 +570,30 @@ pub fn run(
                 }
             }
         }
-        if updated && humble_counter <= 0 && network_available {
-            debug!("INFORMING EVERYBODY");
-            inform_everybody(
-                &mut world_view,
-                &sender_tx,
-                &controller_tx,
-                &lights_tx);
-        }
 
-    }
-}
-
-
-fn inform_everybody(
-    world_view: &mut WorldView,
-    sender_tx: &cbc::Sender<messages::Manager>,
-    controller_tx: &cbc::Sender<messages::Controller>,
-    lights_tx: &cbc::Sender<messages::Controller>
-) {
-    let world_view_clone = world_view.clone();
-    sender_tx.send(messages::Manager::HeartBeat(SystemTime::now(), world_view_clone)).expect("send to sender failed");
-    
-    let (controller_reqs, active_elevators) = world_view.assign_requests(); 
-    for (id, elevator) in world_view.elevators.iter_mut() {
-        if active_elevators.contains(&(*id as i32)) {
-            if !elevator.has_request {
-                elevator.has_request = true;
+        
+        if updated {
+            if humble_counter <= 0 && network_available {
+                let world_view_clone = world_view.clone();
+                sender_tx.send(messages::Manager::HeartBeat(std::time::SystemTime::now(), world_view_clone)).expect("send to sender failed");
             }
-            // if already has_request, do not reset counter
-        } else {
-            elevator.has_request = false;
-             
+
+            let (controller_reqs, active_elevators) = world_view.assign_requests(); 
+            for (id, elevator) in world_view.elevators.iter_mut() {
+                if active_elevators.contains(&(*id as i32)) {
+                    if !elevator.has_request {
+                        elevator.has_request = true;
+                    }
+                    // if already has_request, do not reset counter
+                } else {
+                    elevator.has_request = false;
+                     
+                }
+            }
+            controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
+            
+            let lights_reqs = world_view.get_confirmed_requests();
+            lights_tx.send(messages::Controller::Requests(lights_reqs)).expect("send to lights failed");
         }
     }
-    controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
-    let lights_reqs = world_view.get_confirmed_requests();
-    lights_tx.send(messages::Controller::Requests(lights_reqs)).expect("send to lights failed");
 }
