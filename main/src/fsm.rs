@@ -125,6 +125,7 @@ impl ElevatorState {
             },
             _ => {}
         }
+        manager_tx.send(messages::Manager::ElevatorState(self.dirn, self.behaviour, self.floor)).expect("couldn't send to manager");
     }
     pub fn fsm_on_obstruction(&mut self, val: bool) {
         trace!("fsm_on_obstruction");
