@@ -32,7 +32,7 @@ fn set_all_lights(elev_conn: &e::Elevator, requests: &fsm::ControllerRequests) {
 
 
 #[cfg(test)]
-mod tests {
+mod test_lights {
     use super::*;
     use crate::fsm::ControllerRequests;
     use crate::config;

@@ -147,9 +147,9 @@ fn ids_with_assigned_calls(parsed_json: &Value) -> Option<Vec<i32>> {
 
 
 #[cfg(test)]
-mod tests {
+mod test_run_hra_executable {
     use super::*;
-    // function run_hra_executable
+
     #[test]
     fn test_run_hra_executable() {
         let json_data = r#"{
@@ -229,8 +229,12 @@ mod tests {
         let output = run_hra_executable("invalid_executable", json_data);
         assert!(output.is_none());
     }
+}
 
-    // function elevator_algorithm
+
+mod test_elevator_algorithm {
+    use super::*;
+
     #[test]
     fn test_elevator_algorithm_one_elevator() {
         let world_view = WorldView::init(1);
@@ -316,9 +320,11 @@ mod tests {
         ]);
         assert!(assigned_elevators.is_empty());
     }
+}
 
+mod test_conver_json_to_controller_reqs {
+    use super::*;
 
-    // function covert_json_to_controller_reqs
     #[test]
     fn test_covert_json_to_controller_reqs() {
         let json_data = r#"{
@@ -380,8 +386,11 @@ mod tests {
         );
         assert_eq!(result, expected_output);
     }
+}
 
-    // function ids_with_assigned_calls
+mod test_ids_with_assigned_calls {
+    use super::*;
+
     #[test]
     fn test_ids_with_assigned_calls() {
         let json = r#"{
@@ -447,5 +456,4 @@ mod tests {
         let result = ids_with_assigned_calls(&parsed_json).unwrap();
         assert!(result.is_empty()); 
     }
-
 }
