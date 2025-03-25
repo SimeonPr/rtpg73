@@ -35,12 +35,15 @@ fn run_hra_executable(executable: &str, input_json: &str) -> Option<Vec<u8>> {
 }
 
 
-pub fn elevator_algorithm(world_view: &WorldView) -> Option<fsm::ControllerRequests> {
-    let mut states = HashMap::new();
+
+pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequests, Vec<i32>)>{
+    
     let alive_elevators = world_view.get_alive_elevators(2);
     if alive_elevators.is_empty() {
-        return Some(([[false; config::CALL_COUNT]; config::FLOOR_COUNT]));
+        return Some(([[false; config::CALL_COUNT]; config::FLOOR_COUNT], vec![]));
     }
+    let mut states = HashMap::new();
+
     let elevators = world_view.get_elevators();
     for id in alive_elevators.iter() {
         let elevator = elevators.get(id)?;
@@ -79,7 +82,9 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<fsm::ControllerReque
     let own_id = world_view.get_id();
     let output_json = String::from_utf8(output).ok()?;
 
-    covert_json_to_controller_reqs(&output_json, own_id)
+    let reqs = covert_json_to_controller_reqs(&output_json, own_id)?;
+    let active_ids: Vec<i32> = alive_elevators.iter().map(|id| *id as i32).collect();
+    Some((reqs, active_ids))
 }
 
 pub fn covert_json_to_controller_reqs(output_json: &str, id: u8) -> Option<fsm::ControllerRequests> {

@@ -485,7 +485,7 @@ pub fn run(
     let mut humble_counter = 5;
     loop {
         let mut updated = false;
-        debug!("Current WorldView: {:#?}", &world_view);
+        //debug!("Current WorldView: {:#?}", &world_view);
         cbc::select! {
             recv(manager_rx) -> a => {
                 let message = a.expect("couldn't get message");
@@ -493,7 +493,7 @@ pub fn run(
                     messages::Manager::Ping => {
                         debug!("Received Ping");
                     },
-                    messages::Manager::HeartBeat(foreign_world_view) => {
+                    messages::Manager::HeartBeat(_, foreign_world_view) => {
                         debug!("Received WorldView");
                         if foreign_world_view.id != world_view.get_id() {
                             if humble_counter > 0 {
@@ -513,6 +513,7 @@ pub fn run(
                     messages::Manager::ElevatorState(dirn, behaviour, floor) => {
                         debug!("Received ElevatorState");
                         let (new_wv, up) = world_view.handle_elevator_state(dirn, behaviour, floor);
+                        println!("elevator message recieved");
                         if up {
                             world_view.compare_world_views(&new_wv);
                             world_view = new_wv;
@@ -555,10 +556,10 @@ pub fn run(
                     updated = up;
                 }
 
-                for elevator in world_view.elevators.values_mut() {
+                for (id, elevator) in world_view.elevators.iter_mut() {
                     if elevator.has_request && elevator.last_moved.elapsed().expect("elapsed() failed") > Duration::from_secs(10) {
                         if elevator.is_working {
-                            debug!("elevator {} is not working", elevator.id);
+                            println!("elevator {} is not working", id);
                             updated = true;
                         }
                         elevator.is_working = false;
@@ -587,7 +588,7 @@ fn inform_everybody(
     lights_tx: &cbc::Sender<messages::Controller>
 ) {
     let world_view_clone = world_view.clone();
-    sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).expect("send to sender failed");
+    sender_tx.send(messages::Manager::HeartBeat(SystemTime::now(), world_view_clone)).expect("send to sender failed");
     
     let (controller_reqs, active_elevators) = world_view.assign_requests(); 
     for (id, elevator) in world_view.elevators.iter_mut() {
