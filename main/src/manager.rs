@@ -84,7 +84,10 @@ impl ElevatorNetworkState {
 pub struct Elevator {
     last_received: SystemTime,
     pub state: ElevatorNetworkState,
-    cab_requests: [Request; config::FLOOR_COUNT]
+    cab_requests: [Request; config::FLOOR_COUNT],
+    last_moved: SystemTime,
+    has_request: bool,
+    is_working: bool
 }
 impl Elevator {
     pub fn new() -> Elevator {
@@ -92,7 +95,11 @@ impl Elevator {
         Elevator {
             last_received: SystemTime::now(),
             state: ElevatorNetworkState::new(),
-            cab_requests
+            cab_requests,
+            last_moved: SystemTime::now(),
+            has_request: false,
+            is_working: true
+
         }
     }
 
@@ -108,7 +115,7 @@ pub struct WorldView {
 }
 
 impl WorldView {
-
+    
     pub fn init(id: u8) -> WorldView {
         let mut elevators = HashMap::new();
         elevators.insert(id, Elevator::new());
@@ -233,6 +240,13 @@ impl WorldView {
         // update foreign elevators state + last_received
         if let Some(e) = foreign_elevators.get(&foreign_id) { 
             let u = wv_clone.elevators.get_mut(&foreign_id).expect("key should have been available");
+            if (u.state.current_floor != e.state.current_floor) || (u.state.behaviour != e.state.behaviour){
+                if u.last_moved.elapsed().expect("elapsed() failed") > Duration::from_secs(10) {
+                    info!("Foreign Elevator {} recovered", foreign_id);
+                }
+                u.last_moved = SystemTime::now();
+                u.is_working = true;
+            }
             u.last_received = current_time;
             u.state = e.state;
         }
@@ -331,6 +345,15 @@ impl WorldView {
     pub fn handle_elevator_state(&self, dirn: Dirn, behaviour: ElevatorBehaviour, floor: i8) -> (WorldView, bool) {
         let mut wv_clone = self.clone();
         let elev = wv_clone.elevators.get_mut(&wv_clone.id).expect("key should have been available");
+        if elev.state.current_floor != floor || elev.state.behaviour != behaviour 
+        {
+            if elev.last_moved.elapsed().expect("elapsed() failed") > Duration::from_secs(10)
+            {
+                info!("Own elevator recovered");
+            }
+            elev.last_moved = SystemTime::now();
+            elev.is_working = true;
+        }
         elev.state.dirn = dirn;
         elev.state.behaviour = behaviour;
         elev.state.current_floor = floor;
@@ -356,7 +379,11 @@ impl WorldView {
     pub fn get_alive_elevators(&self, timeout: u64) -> HashSet<u8> {
         let mut alive_elevators = HashSet::new();
         for (id, elev) in self.elevators.iter() {
-            if elev.last_received.elapsed().expect("elapsed() failed") > Duration::from_secs(timeout) && *id != self.id {continue;}
+            if 
+            (*id != self.id) && 
+            (elev.last_received.elapsed().expect("elapsed() failed") > Duration::from_secs(timeout)) ||
+            (!elev.is_working)
+            {continue;}
             alive_elevators.insert(*id);
         }
         alive_elevators
@@ -367,21 +394,19 @@ impl WorldView {
     pub fn get_elevators(&self) -> HashMap<u8, Elevator> {
         self.elevators.clone()
     }
-    pub fn assign_requests(&self) -> fsm::ControllerRequests {
-        // Get Hall Requests
-        let result: Option<fsm::ControllerRequests> = cost::elevator_algorithm(&self);
+    pub fn assign_requests(&self) -> (fsm::ControllerRequests, Vec<i32>) {
+        let result: Option<(fsm::ControllerRequests, Vec<i32>)> = cost::elevator_algorithm(&self);
         match result {
-            Some(mut r) => {
-                // Add Cab Requests
+            Some((mut r, active_elevators)) => {
                 let tmp = self.get_confirmed_requests();
                 for floor in 0..config::FLOOR_COUNT {
                     r[floor][2] = tmp[floor][2];  
                 }
-                r
+                (r, active_elevators)
             },
             None => {
                 error!("Elevator Algorithm failed");
-                self.get_confirmed_requests()
+                (self.get_confirmed_requests(), vec![])
             }
         }
     }
@@ -532,12 +557,23 @@ pub fn run(
                     }
                     updated = true;
                 }
+                for (id, elevator) in world_view.elevators.iter_mut() {
+                    if elevator.has_request && elevator.last_moved.elapsed().expect("elapsed() failed") > Duration::from_secs(10) {
+                        if elevator.is_working {
+                            println!("elevator {} is not working", id);
+                            updated = true;
+                        }
+                        elevator.is_working = false;
+
+                        
+                    }
+                }
             }
         }
         if updated && humble_counter <= 0 && network_available {
             debug!("INFORMING EVERYBODY");
             inform_everybody(
-                &world_view,
+                &mut world_view,
                 &sender_tx,
                 &controller_tx,
                 &lights_tx);
@@ -548,17 +584,27 @@ pub fn run(
 
 
 fn inform_everybody(
-    world_view: &WorldView,
+    world_view: &mut WorldView,
     sender_tx: &cbc::Sender<messages::Manager>,
     controller_tx: &cbc::Sender<messages::Controller>,
     lights_tx: &cbc::Sender<messages::Controller>
 ) {
     let world_view_clone = world_view.clone();
-    sender_tx.send(messages::Manager::HeartBeat(std::time::SystemTime::now(), world_view_clone)).expect("send to sender failed");
+    sender_tx.send(messages::Manager::HeartBeat(SystemTime::now(), world_view_clone)).expect("send to sender failed");
     
-    let controller_reqs = world_view.assign_requests();
+    let (controller_reqs, active_elevators) = world_view.assign_requests(); 
+    for (id, elevator) in world_view.elevators.iter_mut() {
+        if active_elevators.contains(&(*id as i32)) {
+            if !elevator.has_request {
+                elevator.has_request = true;
+            }
+            // if already has_request, do not reset counter
+        } else {
+            elevator.has_request = false;
+             
+        }
+    }
     controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
-
     let lights_reqs = world_view.get_confirmed_requests();
     lights_tx.send(messages::Controller::Requests(lights_reqs)).expect("send to lights failed");
 }
