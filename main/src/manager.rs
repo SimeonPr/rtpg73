@@ -630,7 +630,7 @@ pub fn run(
             sender_tx.send(heartbeat).expect("send to sender failed");
             controller_tx.send(controller_msg).expect("send to controller failed");
             lights_tx.send(lights_msg).expect("send to lights failed");
-            alarm = false;
+            
         }
     }
 }
