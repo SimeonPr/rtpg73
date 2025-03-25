@@ -261,9 +261,12 @@ impl WorldView {
             if let Some(u) = new_wv.elevators.get_mut(&foreign_id) {
                 let recovered = (u.state.current_floor != e.state.current_floor)
                     || (u.state.behaviour != e.state.behaviour);
-                if recovered || !u.has_request {
-                    u.detect_if_dead_counter = 5;
-                    info!("Foreign Elevator {} recovered, resetting detect_if_dead_counter.", foreign_id);
+                if recovered || !u.has_request{
+                    if u.detect_if_dead_counter == 0{
+                        info!("Foreign Elevator {} recovered, resetting detect_if_dead_counter.", foreign_id);
+                    }
+                    u.detect_if_dead_counter = 10;
+                   
                 }
                 u.last_received = current_time;
                 u.state = e.state;
@@ -384,9 +387,12 @@ impl WorldView {
         let mut new_wv = self.clone();
         if let Some(elev) = new_wv.elevators.get_mut(&new_wv.id) {
             let recovered = elev.state.current_floor != floor || elev.state.behaviour != behaviour;
-            if recovered || !elev.has_request {
-                elev.detect_if_dead_counter = 5;
-                info!("Own elevator recovered, resetting detect_if_dead_counter.");
+            if recovered || !elev.has_request{
+                if elev.detect_if_dead_counter == 0{
+                    info!("Own elevator recovered, resetting detect_if_dead_counter.");
+                }
+                elev.detect_if_dead_counter = 10;
+                
             }
             elev.state.dirn = dirn;
             elev.state.behaviour = behaviour;
