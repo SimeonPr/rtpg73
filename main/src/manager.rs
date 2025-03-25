@@ -563,11 +563,23 @@ pub fn run(
                             info!("Elevator {} is not working", id);
                             updated = true;
                         }
-                        elevator.is_working = false;
-
-                        
+                        elevator.is_working = false; 
                     }
                 }
+                let (_, active_elevators) = world_view.assign_requests(); 
+                for (id, elevator) in world_view.elevators.iter_mut() {
+                    if active_elevators.contains(&(*id as i32)) {
+                        if !elevator.has_request {
+                            elevator.last_moved = SystemTime::now();
+                            elevator.has_request = true;
+                            updated = true;
+                        }   
+                        // if already has_request, do not reset counter
+                    } else {
+                        elevator.has_request = false;     
+                    }
+                }
+                
             }
         }
 
