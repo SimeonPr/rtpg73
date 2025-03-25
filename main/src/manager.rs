@@ -416,7 +416,7 @@ impl WorldView {
             // For non-local elevators, if too much time has elapsed or dead counter is zero, skip.
             if (*id != self.id)
                 && (elev.last_received.elapsed().expect("elapsed() failed") > Duration::from_secs(timeout)
-                    || elev.detect_if_dead_counter == 0)
+                    && elev.detect_if_dead_counter == 0)
             {
                 continue;
             }
