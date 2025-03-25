@@ -558,7 +558,7 @@ pub fn run(
                         if foreign_world_view.id != world_view.get_id() {
                             if humble_counter > 0 {
                                 world_view = world_view.handle_humbly(foreign_world_view);
-                                humble_counter -=1;
+                                humble_counter = 0;
                             } else {
                                 let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
                                 if up {
@@ -576,7 +576,7 @@ pub fn run(
                             world_view.compare_world_views(&new_wv);
                             world_view = new_wv;
                         }
-                        updated = true;
+                        updated |= true;
                     },
                     messages::Manager::ClearRequest(floor, should_clear) => {
                         debug!("Received ClearRequest");
@@ -585,7 +585,7 @@ pub fn run(
                             world_view.compare_world_views(&new_wv);
                             world_view = new_wv;
                         }
-                        updated = up;
+                        updated |= up;
                     }
                 }
             },
@@ -598,7 +598,7 @@ pub fn run(
                         world_view.compare_world_views(&new_wv);
                         world_view = new_wv;
                     }
-                    updated = up;
+                    updated |= up;
                 }
             },
             recv(alarm_rx) -> _a => {
@@ -610,14 +610,15 @@ pub fn run(
                     if up_barrier {
                         world_view.compare_world_views(&new_wv);
                         world_view = new_wv;
-                        updated |= true;
+                        
                     }
+                    updated |= up_barrier;
                 }
                 // Update dead counters and reassign calls.
                 let (new_wv, dead_changed, _controller_reqs, _active_elevators) = update_dead_elevators(world_view);
                 world_view = new_wv;
                 if dead_changed {
-                    updated |= true;
+                    updated = true;
                 }
               
             }
