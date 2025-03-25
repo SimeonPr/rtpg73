@@ -39,7 +39,7 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<fsm::ControllerReque
     let mut states = HashMap::new();
     let alive_elevators = world_view.get_alive_elevators(2);
     if alive_elevators.is_empty() {
-        return Some(([[false; config::CALL_COUNT]; config::FLOOR_COUNT], vec![]));
+        return Some(([[false; config::CALL_COUNT]; config::FLOOR_COUNT]));
     }
     let elevators = world_view.get_elevators();
     for id in alive_elevators.iter() {
