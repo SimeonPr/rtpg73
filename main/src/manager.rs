@@ -534,31 +534,18 @@ pub fn run(
                 }
             }
         }
-        if updated && humble_counter <= 0 && network_available {
-            debug!("INFORMING EVERYBODY");
-            inform_everybody(
-                &world_view,
-                &sender_tx,
-                &controller_tx,
-                &lights_tx);
+        
+        if updated {
+            if humble_counter <= 0 && network_available {
+                let world_view_clone = world_view.clone();
+                sender_tx.send(messages::Manager::HeartBeat(std::time::SystemTime::now(), world_view_clone)).expect("send to sender failed");
+            }
+
+            let controller_reqs = world_view.assign_requests();
+            controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
+
+            let lights_reqs = world_view.get_confirmed_requests();
+            lights_tx.send(messages::Controller::Requests(lights_reqs)).expect("send to lights failed");
         }
-
     }
-}
-
-
-fn inform_everybody(
-    world_view: &WorldView,
-    sender_tx: &cbc::Sender<messages::Manager>,
-    controller_tx: &cbc::Sender<messages::Controller>,
-    lights_tx: &cbc::Sender<messages::Controller>
-) {
-    let world_view_clone = world_view.clone();
-    sender_tx.send(messages::Manager::HeartBeat(std::time::SystemTime::now(), world_view_clone)).expect("send to sender failed");
-    
-    let controller_reqs = world_view.assign_requests();
-    controller_tx.send(messages::Controller::Requests(controller_reqs)).expect("send to controller failed");
-
-    let lights_reqs = world_view.get_confirmed_requests();
-    lights_tx.send(messages::Controller::Requests(lights_reqs)).expect("send to lights failed");
 }
