@@ -213,30 +213,29 @@ impl WorldView {
 
     // Merge our local state into the foreign world view without losing cab calls.
     pub fn handle_humbly(&self, foreign_world_view: WorldView) -> WorldView {
-        let mut new_wv = self.clone();
+        let mut new_wv = foreign_world_view.clone();
         let id = self.id;
     
-        if let Some(local_elev) = new_wv.elevators.get_mut(&id) {
-            if let Some(foreign_elev) = foreign_world_view.elevators.get(&id) {
-                for floor in 0..config::FLOOR_COUNT {
-                    local_elev.cab_requests[floor].merge(&foreign_elev.cab_requests[floor], id);
-                }
+        // Merge foreign cab calls into our local elevator
+        if let Some(foreign_elev) = foreign_world_view.elevators.get(&id) {
+            let local_elev = new_wv.elevators.entry(id).or_insert_with(Elevator::new);
+            for floor in 0..config::FLOOR_COUNT {
+                local_elev.cab_requests[floor].merge(&foreign_elev.cab_requests[floor], id);
             }
             local_elev.last_received = SystemTime::now();
             local_elev.is_working = true;
             local_elev.detect_if_dead_counter = 10;
             local_elev.has_request = true;
-        } else if let Some(foreign_elev) = foreign_world_view.elevators.get(&id) {
-            new_wv.elevators.insert(id, foreign_elev.clone());
         }
     
-        // Merge hall requests as well
+        // Merge hall requests (also needed!)
         for floor in 0..config::FLOOR_COUNT {
             for dir in 0..2 {
-                new_wv.hall_requests[floor][dir].merge(&foreign_world_view.hall_requests[floor][dir], id);
+                new_wv.hall_requests[floor][dir].merge(&self.hall_requests[floor][dir], id);
             }
         }
     
+        new_wv.id = id;
         new_wv
     }
     
@@ -302,19 +301,12 @@ impl WorldView {
     
         let alive_elevators = new_wv.get_alive_elevators(1);
     
-        // Update hall requests considering only alive elevators
         for floor in 0..config::FLOOR_COUNT {
             for dir in 0..2 {
                 let request = &mut new_wv.hall_requests[floor][dir];
                 if request.state == RequestState::Unconfirmed {
-                    let working_acks: HashSet<u8> = request
-                        .acks
-                        .iter()
-                        .copied()
-                        .filter(|id| alive_elevators.contains(id))
-                        .collect();
-    
-                    if alive_elevators.is_subset(&working_acks) && !alive_elevators.is_empty() {
+                    let filtered_acks: HashSet<_> = request.acks.intersection(&alive_elevators).collect();
+                    if alive_elevators.is_subset(&filtered_acks.iter().cloned().copied().collect()) && !alive_elevators.is_empty() {
                         request.set_to(RequestState::Confirmed, new_wv.id);
                         updated = true;
                     }
@@ -322,25 +314,17 @@ impl WorldView {
             }
         }
     
-        // Update cab requests similarly (only alive elevators matter)
         for (id, elev) in new_wv.elevators.iter_mut() {
             for floor in 0..config::FLOOR_COUNT {
                 let request = &mut elev.cab_requests[floor];
                 if request.state == RequestState::Unconfirmed {
-                    let working_acks: HashSet<u8> = request
-                        .acks
-                        .iter()
-                        .copied()
-                        .filter(|ack_id| alive_elevators.contains(ack_id))
-                        .collect();
-    
-                    if alive_elevators.is_subset(&working_acks) && !alive_elevators.is_empty() {
+                    let filtered_acks: HashSet<_> = request.acks.intersection(&alive_elevators).collect();
+                    if alive_elevators.is_subset(&filtered_acks.iter().cloned().copied().collect()) && !alive_elevators.is_empty() {
                         request.set_to(RequestState::Confirmed, new_wv.id);
                         updated = true;
                     }
                 }
             }
-            // Explicitly update working state based on alive status
             elev.is_working = alive_elevators.contains(id);
         }
     
@@ -420,10 +404,9 @@ impl WorldView {
     pub fn get_alive_elevators(&self, timeout: u64) -> HashSet<u8> {
         let mut alive = HashSet::new();
         for (id, elev) in self.elevators.iter() {
-            if (*id != self.id)
-                && (elev.last_received.elapsed().expect("elapsed() failed") > Duration::from_secs(timeout)
-                    && elev.detect_if_dead_counter == 0)
-            {
+            if (*id != self.id) &&
+                (elev.last_received.elapsed().unwrap_or(Duration::from_secs(timeout + 1)) > Duration::from_secs(timeout)
+                || elev.detect_if_dead_counter == 0) {
                 continue;
             }
             alive.insert(*id);
@@ -554,22 +537,24 @@ pub fn run(
                 debug!("Received Alarm");
                 if humble_counter > 0 {
                     humble_counter -= 1;
-                } else {
-                    let (new_wv, up) = world_view.update_states_at_barrier();
-                    if up {
-                        world_view.compare_world_views(&new_wv);
-                        world_view = new_wv;
-                        updated = true;
-                    }
                 }
-                // Decrement dead counters and set updated if a counter reaches zero
-                for elevator in world_view.elevators.values_mut() {
+            
+                // Explicitly check barriers every alarm
+                let (new_wv, barrier_updated) = world_view.update_states_at_barrier();
+                if barrier_updated {
+                    world_view.compare_world_views(&new_wv);
+                    world_view = new_wv;
+                    updated = true;
+                }
+            
+                // Decrement counters and detect elevators becoming dead
+                for (id, elevator) in world_view.elevators.iter_mut() {
                     if elevator.has_request && elevator.detect_if_dead_counter > 0 {
                         elevator.detect_if_dead_counter -= 1;
-                        if elevator.detect_if_dead_counter == 0 {
+                        if elevator.detect_if_dead_counter == 0 && elevator.is_working {
                             elevator.is_working = false;
-                            updated = true; // Crucial line added here!
-                            info!("Elevator marked dead, triggering update.");
+                            updated = true;
+                            info!("Elevator {} marked as dead, updating...", id);
                         }
                     }
                 }
