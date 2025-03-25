@@ -558,6 +558,9 @@ pub fn run(
                     updated = true;
                 }
                 for (id, elevator) in world_view.elevators.iter_mut() {
+                    if !elevator.has_request{
+                        elevator.last_moved = SystemTime::now();
+                    }
                     if elevator.has_request && elevator.last_moved.elapsed().expect("elapsed() failed") > Duration::from_secs(10) {
                         if elevator.is_working {
                             info!("Elevator {} is not working", id);
@@ -570,7 +573,6 @@ pub fn run(
                 for (id, elevator) in world_view.elevators.iter_mut() {
                     if active_elevators.contains(&(*id as i32)) {
                         if !elevator.has_request {
-                            elevator.last_moved = SystemTime::now();
                             elevator.has_request = true;
                             updated = true;
                         }   
