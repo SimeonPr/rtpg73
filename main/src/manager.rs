@@ -239,8 +239,7 @@ impl WorldView {
         if let Some(e) = foreign_elevators.get(&foreign_id) { 
             let u = wv_clone.elevators.get_mut(&foreign_id).expect("key should have been available");
             u.last_received = current_time;
-            if e.state.current_floor != u.state.current_floor ||
-                e.state.behaviour != u.state.behaviour {
+            if e.state.current_floor != u.state.current_floor {
                 u.last_moved = current_time;
             }
             u.state = e.state;
