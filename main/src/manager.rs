@@ -84,15 +84,20 @@ impl ElevatorNetworkState {
 pub struct Elevator {
     last_received: SystemTime,
     pub state: ElevatorNetworkState,
-    cab_requests: [Request; config::FLOOR_COUNT]
+    cab_requests: [Request; config::FLOOR_COUNT],
+    last_assigned: SystemTime,
+    last_moved: SystemTime
 }
 impl Elevator {
     pub fn new() -> Elevator {
-        let cab_requests = Default::default(); 
+        let cab_requests = Default::default();
+        let now = SystemTime::now();
         Elevator {
             last_received: SystemTime::now(),
             state: ElevatorNetworkState::new(),
-            cab_requests
+            cab_requests,
+            last_assigned: now,
+            last_moved: now
         }
     }
 
@@ -234,6 +239,9 @@ impl WorldView {
         if let Some(e) = foreign_elevators.get(&foreign_id) { 
             let u = wv_clone.elevators.get_mut(&foreign_id).expect("key should have been available");
             u.last_received = current_time;
+            if e.state.current_floor != u.state.current_floor {
+                u.last_moved = current_time;
+            }
             u.state = e.state;
         }
 
@@ -340,7 +348,6 @@ impl WorldView {
     pub fn handle_clear_request(&self, floor: usize, should_clear: &[bool; 3]) -> (WorldView, bool) {
         let mut wv_clone = self.clone();
         let own_elev = wv_clone.elevators.get_mut(&wv_clone.id).expect("key should have been available");
-        debug!("Clearing {:?}", &should_clear);
         for i in 0..2 {
             if should_clear[i] {
                 wv_clone.hall_requests[floor][i].set_to(RequestState::None, wv_clone.id);
@@ -367,22 +374,34 @@ impl WorldView {
     pub fn get_elevators(&self) -> HashMap<u8, Elevator> {
         self.elevators.clone()
     }
-    pub fn assign_requests(&self) -> fsm::ControllerRequests {
-        // Get Hall Requests
-        let result: Option<fsm::ControllerRequests> = cost::elevator_algorithm(&self);
-        match result {
-            Some(mut r) => {
-                // Add Cab Requests
-                let tmp = self.get_confirmed_requests();
-                for floor in 0..config::FLOOR_COUNT {
-                    r[floor][2] = tmp[floor][2];  
+    pub fn get_assignable_elevators(&self) -> HashSet<u8> {
+        let mut assignable_elevators: HashSet<u8> = HashSet::new();
+        let alive_elevators = self.get_alive_elevators(2);
+        let elevators = self.get_elevators();
+        
+        for &id in &alive_elevators {
+            if let Some(e) = elevators.get(&id) {
+                if e.last_moved.elapsed().expect("elapsed() failed") < Duration::from_secs(5) ||
+                    e.last_assigned.elapsed().expect("elapsed() failed") < Duration::from_secs(5) ||
+                    e.last_assigned < e.last_moved {
+                    assignable_elevators.insert(id);                    
                 }
-                r
-            },
-            None => {
-                error!("Elevator Algorithm failed");
-                self.get_confirmed_requests()
             }
+        }
+
+        assignable_elevators.insert(self.id);
+        assignable_elevators
+    }
+    pub fn assign_requests(&mut self) -> fsm::ControllerRequests {
+        // Get Hall Requests
+        let assignable_elevators = self.get_assignable_elevators();
+        debug!("Assignable Elevators: {:?}", assignable_elevators);
+        if let Some(result) = cost::elevator_algorithm(&self, assignable_elevators) {
+            debug!("RequestAssignment: {:?}", result);
+            result.get(&self.get_id()).unwrap().clone()
+        } else {
+            error!("Elevator Algorithm failed");
+            self.get_confirmed_requests()
         }
     }
 
@@ -459,13 +478,12 @@ pub fn run(
                         if foreign_world_view.get_id() != world_view.get_id() {
                             let mut new = false;
                             if !foreign_instants.contains_key(&foreign_world_view.get_id()) {
-                                debug!("INSERTING TIMESTAMP");
                                 foreign_instants.insert(foreign_world_view.get_id(), time_stamp);
                                 new = true;
                             }
                             let old_ts = foreign_instants.get(&foreign_world_view.get_id()).unwrap();
                             if *old_ts >= time_stamp && !new {
-                                debug!("RECEIVED OLD PACKET");
+                                debug!("Discarding Old Packet");
                             } else {
                                 foreign_instants.insert(foreign_world_view.get_id(), time_stamp);
                                 if humble_counter > 0 {
@@ -482,7 +500,7 @@ pub fn run(
                                 }
                             }
                         } else {
-                            debug!("RECEIVED FROM MYSELF");
+                            debug!("Discarding Own Packet");
                         }
                     },
                     messages::Manager::ElevatorState(dirn, behaviour, floor) => {

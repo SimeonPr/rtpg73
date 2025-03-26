@@ -1,5 +1,6 @@
 use serde_json;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use serde_json::{Value, from_str, json};
 use std::process::{Command,Stdio};
 use crate::fsm;
@@ -35,13 +36,12 @@ fn run_hra_executable(executable: &str, input_json: &str) -> Option<Vec<u8>> {
 }
 
 
-pub fn elevator_algorithm(world_view: &WorldView) -> Option<fsm::ControllerRequests> {
+pub fn elevator_algorithm(world_view: &WorldView, ids: HashSet<u8>) -> Option<HashMap<u8,fsm::ControllerRequests>> {
     let mut states = HashMap::new();
-    let alive_elevators = world_view.get_alive_elevators(2);
     let elevators = world_view.get_elevators();
-    for id in alive_elevators.iter() {
+    for id in ids.iter() {
         let elevator = elevators.get(id)?;
-        let key = format!("id_{}", id);
+        let key = format!("{}", id);
         let cab_requests_bool = elevator.get_cab_requests()
             .map(|s| matches!(s.get_state(), RequestState::Confirmed));
         // Use serde_json::json! to construct the elevator state object
@@ -75,8 +75,18 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<fsm::ControllerReque
     
     let own_id = world_view.get_id();
     let output_json = String::from_utf8(output).ok()?;
-
-    covert_json_to_controller_reqs(&output_json, own_id)
+    let mut result: HashMap<u8, fsm::ControllerRequests> = HashMap::new();
+    for &id in &ids {
+        let mut to_insert = covert_json_to_controller_reqs(&output_json, own_id)?;
+        let elevator = elevators.get(&id)?;
+        for (floor, request) in elevator.get_cab_requests().iter().enumerate() {
+            if request.get_state() == RequestState::Confirmed {
+                to_insert[floor][2] = true;
+            }
+        }
+        result.insert(id, to_insert);
+    }
+    Some(result)
 }
 
 pub fn covert_json_to_controller_reqs(output_json: &str, id: u8) -> Option<fsm::ControllerRequests> {
@@ -87,7 +97,7 @@ pub fn covert_json_to_controller_reqs(output_json: &str, id: u8) -> Option<fsm::
     let mut controller_requests: fsm::ControllerRequests = [[false; config::CALL_COUNT]; config::FLOOR_COUNT];
 
     // Check if the ID exists in the parsed JSON
-    let id_data = parsed_json.get(&format!("id_{}", id))?;
+    let id_data = parsed_json.get(&format!("{}", id))?;
 
     // Iterate over the boolean pairs in the array for the current ID
     for (floor, bool_pair) in id_data.as_array()?.iter().enumerate() {
@@ -97,8 +107,8 @@ pub fn covert_json_to_controller_reqs(output_json: &str, id: u8) -> Option<fsm::
         let bool2 = pair[1].as_bool()?;
 
         // Add the pair to the appropriate row in the matrix
-        controller_requests[floor][0] = controller_requests[floor][0] || bool1;
-        controller_requests[floor][1] = controller_requests[floor][1] || bool2;
+        controller_requests[floor][0] = bool1;
+        controller_requests[floor][1] = bool2;
     }
 
     Some(controller_requests)
