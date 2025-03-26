@@ -83,32 +83,39 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequ
     let own_id = world_view.get_id();
     let output_json = String::from_utf8(output).ok()?;
 
-    let reqs = covert_json_to_controller_reqs(&output_json, own_id)?;
-    let active_ids: Vec<i32> = alive_elevators.iter().map(|id| *id as i32).collect();
-    Some((reqs, active_ids))
+    let all_reqs = covert_json_to_all_controller_reqs(&output_json)?;
+
+    let mut active_ids: Vec<i32> = Vec::new();
+    for (id, requests) in &all_reqs {
+    let has_requests = requests.iter().any(|floor| floor.iter().any(|&call| call));
+    if has_requests {
+        active_ids.push(*id);
+    }
 }
 
-pub fn covert_json_to_controller_reqs(output_json: &str, id: u8) -> Option<fsm::ControllerRequests> {
-    // Parse the JSON string into a Value
-    let parsed_json: Value = from_str(output_json).ok()?;
+// Now you get requests specifically for your own elevator:
+let own_reqs = all_reqs.get(&(own_id as i32))?.clone();
+Some((own_reqs, active_ids))
+}
 
-    // Initialize a matrix with 4 rows (for id_1 to id_4), each being a vector of boolean pairs
-    let mut controller_requests: fsm::ControllerRequests = [[false; config::CALL_COUNT]; config::FLOOR_COUNT];
+pub fn covert_json_to_all_controller_reqs(output_json: &str) -> Option<HashMap<i32, fsm::ControllerRequests>> {
+    let parsed_json: Value = serde_json::from_str(output_json).ok()?;
+    let mut assignments: HashMap<i32, fsm::ControllerRequests> = HashMap::new();
 
-    // Check if the ID exists in the parsed JSON
-    let id_data = parsed_json.get(&format!("id_{}", id))?;
+    for (key, val) in parsed_json.as_object()? {
+        if let Some(id_str) = key.strip_prefix("id_") {
+            let id: i32 = id_str.parse().ok()?;
+            let mut controller_requests: fsm::ControllerRequests = [[false; config::CALL_COUNT]; config::FLOOR_COUNT];
 
-    // Iterate over the boolean pairs in the array for the current ID
-    for (floor, bool_pair) in id_data.as_array()?.iter().enumerate() {
-        // Each pair is an array of two booleans
-        let pair = bool_pair.as_array()?;
-        let bool1 = pair[0].as_bool()?;
-        let bool2 = pair[1].as_bool()?;
+            for (floor, bool_pair) in val.as_array()?.iter().enumerate() {
+                let pair = bool_pair.as_array()?;
+                controller_requests[floor][0] = pair[0].as_bool()?;
+                controller_requests[floor][1] = pair[1].as_bool()?;
+            }
 
-        // Add the pair to the appropriate row in the matrix
-        controller_requests[floor][0] = controller_requests[floor][0] || bool1;
-        controller_requests[floor][1] = controller_requests[floor][1] || bool2;
+            assignments.insert(id, controller_requests);
+        }
     }
 
-    Some(controller_requests)
+    Some(assignments)
 }

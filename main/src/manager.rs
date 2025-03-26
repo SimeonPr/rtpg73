@@ -241,7 +241,7 @@ impl WorldView {
         if let Some(e) = foreign_elevators.get(&foreign_id) { 
             let u = wv_clone.elevators.get_mut(&foreign_id).expect("key should have been available");
             if (u.state.current_floor != e.state.current_floor) || (u.state.behaviour != e.state.behaviour){
-                if u.last_moved.elapsed().expect("elapsed() failed") > Duration::from_secs(10) {
+                if !u.is_working {
                     info!("Foreign Elevator {} recovered", foreign_id);
                 }
                 u.last_moved = SystemTime::now();
@@ -347,7 +347,7 @@ impl WorldView {
         let elev = wv_clone.elevators.get_mut(&wv_clone.id).expect("key should have been available");
         if elev.state.current_floor != floor || elev.state.behaviour != behaviour 
         {
-            if elev.last_moved.elapsed().expect("elapsed() failed") > Duration::from_secs(10)
+            if !elev.is_working
             {
                 info!("Own elevator recovered");
             }
@@ -585,6 +585,7 @@ pub fn run(
             for (id, elevator) in world_view.elevators.iter_mut() {
                 if active_elevators.contains(&(*id as i32)) {
                         elevator.has_request = true;
+
                     // if already has_request, do not reset counter
                 } else {
                     elevator.last_moved = SystemTime::now();
