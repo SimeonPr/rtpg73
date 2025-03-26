@@ -1,13 +1,14 @@
 use driver_rust::elevio::elev::Elevator;
 use log::{trace, debug};
 use serde::{Serialize, Deserialize};
-
 use std::thread;
 use std::time::Duration;
 use crossbeam_channel::{self as cbc, Sender};
-use crate::{config, messages};
+use crate::{config};
+use crate::models::messages;
 
 const CALL_COUNT: usize = 3;
+pub type ControllerRequests = [[bool; CALL_COUNT]; config::FLOOR_COUNT];
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum ElevatorBehaviour {
     #[serde(rename = "idle")]
@@ -32,27 +33,27 @@ pub enum Button {
     HallDown,
     Cab
 }
-pub type ControllerRequests = [[bool;CALL_COUNT]; config::FLOOR_COUNT];
+
 #[derive(Debug)]
 pub struct ElevatorState {
-    timer_tx: cbc::Sender<bool>,
-    no_of_timer_threads: u8,
-    floor: i8,
-    dirn: Dirn,
-    requests: ControllerRequests,
-    behaviour: ElevatorBehaviour,
-    door_open_duration: u64,
-    connection: Elevator,
-    obstruction: bool
+    pub timer_tx: cbc::Sender<bool>,
+    pub no_of_timer_threads: u8,
+    pub floor: i8,
+    pub dirn: Dirn,
+    pub requests: ControllerRequests,
+    pub behaviour: ElevatorBehaviour,
+    pub door_open_duration: u64,
+    pub connection: Elevator,
+    pub obstruction: bool,
 }
+
 #[derive(Debug)]
-struct DirectionBehaviourPair {
-    dirn: Dirn,
-    behavior: ElevatorBehaviour
+pub struct DirectionBehaviourPair {
+    pub dirn: Dirn,
+    pub behavior: ElevatorBehaviour,
 }
 
 impl ElevatorState {
-    
     pub fn init_elevator(elevator_connection: Elevator, timer_tx: cbc::Sender<bool>) -> ElevatorState {
         trace!("init_elevator");
         ElevatorState {
@@ -60,13 +61,14 @@ impl ElevatorState {
             no_of_timer_threads: 0,
             floor: -1,
             dirn: Dirn::Stop,
-            requests: [[false;CALL_COUNT]; config::FLOOR_COUNT],
+            requests: [[false; CALL_COUNT]; config::FLOOR_COUNT],
             behaviour: ElevatorBehaviour::Idle,
             door_open_duration: 3,
             connection: elevator_connection,
-            obstruction: false
+            obstruction: false,
         }
     }
+
     pub fn fsm_on_new_requests(&mut self, requests: ControllerRequests, manager_tx: &Sender<messages::Manager>) {
         self.requests = requests;
         match self.behaviour {
@@ -75,85 +77,88 @@ impl ElevatorState {
                 self.dirn = direction_behavior_pair.dirn;
                 self.behaviour = direction_behavior_pair.behavior;
                 match self.behaviour {
-                    ElevatorBehaviour::Idle => {},
+                    ElevatorBehaviour::Idle => {}
                     ElevatorBehaviour::DoorOpen => {
                         self.connection.door_light(true);
                         self.start_time_out_thread();
-                        self.requests_clear_at_current_floor(&manager_tx);
-                    },
+                        self.requests_clear_at_current_floor(manager_tx);
+                    }
                     ElevatorBehaviour::Moving => {
                         self.connection.motor_direction(self.dirn as u8);
                     }
-                };
-            },
-            _ => ()
+                }
+            }
+            _ => {}
         }
     }
+
     pub fn fsm_on_init_between_floors(&mut self) {
         trace!("fsm_on_init_between_floors");
-        //motor direction
         self.connection.motor_direction(Dirn::Down as u8);
         self.dirn = Dirn::Down;
         self.behaviour = ElevatorBehaviour::Moving;
     }
-    
+
     pub fn fsm_on_door_time_out(&mut self, manager_tx: &Sender<messages::Manager>) {
         trace!("fsm_on_door_time_out");
         self.no_of_timer_threads -= 1;
-        if self.no_of_timer_threads > 0 {return;}
-        if self.obstruction  {
+        if self.no_of_timer_threads > 0 {
+            return;
+        }
+        if self.obstruction {
             self.start_time_out_thread();
             return;
         }
-        debug!("Handling LastTimeOut");
-        match self.behaviour {
-            ElevatorBehaviour::DoorOpen => {
-                let pair: DirectionBehaviourPair = self.requests_choose_direction();
-                self.dirn = pair.dirn;
-                self.behaviour = pair.behavior;
 
-                match self.behaviour {
-                    ElevatorBehaviour::DoorOpen => {
-                        self.start_time_out_thread();
-                        self.requests_clear_at_current_floor(&manager_tx);
-                    },
-                    ElevatorBehaviour::Moving | ElevatorBehaviour::Idle => {
-                        self.connection.door_light(false);
-                        self.connection.motor_direction(self.dirn as u8);
-                    }
+        debug!("Handling LastTimeOut");
+        if let ElevatorBehaviour::DoorOpen = self.behaviour {
+            let pair = self.requests_choose_direction();
+            self.dirn = pair.dirn;
+            self.behaviour = pair.behavior;
+
+            match self.behaviour {
+                ElevatorBehaviour::DoorOpen => {
+                    self.start_time_out_thread();
+                    self.requests_clear_at_current_floor(manager_tx);
                 }
-            },
-            _ => {}
-            
+                ElevatorBehaviour::Moving | ElevatorBehaviour::Idle => {
+                    self.connection.door_light(false);
+                    self.connection.motor_direction(self.dirn as u8);
+                }
+            }
         }
-        manager_tx.send(messages::Manager::ElevatorState(self.dirn, self.behaviour, self.floor)).expect("couldn't send to manager");
+
+        manager_tx
+            .send(messages::Manager::ElevatorState(self.dirn, self.behaviour, self.floor))
+            .expect("couldn't send to manager");
     }
+
     pub fn fsm_on_obstruction(&mut self, val: bool) {
         trace!("fsm_on_obstruction");
         self.obstruction = val;
     }
+
     pub fn fsm_on_floor_arrival(&mut self, floor: i8, manager_tx: &Sender<messages::Manager>) {
         trace!("fsm_on_floor_arrival");
         self.floor = floor;
         self.connection.floor_indicator(self.floor as u8);
 
-        match self.behaviour {
-            ElevatorBehaviour::Moving => {
-                if self.requests_should_stop() {
-                    self.connection.motor_direction(Dirn::Stop as u8);
-                    self.connection.door_light(true);
-                    self.requests_clear_at_current_floor(&manager_tx);
-                    self.start_time_out_thread();
-                    self.behaviour = ElevatorBehaviour::DoorOpen;
-                }
+        if let ElevatorBehaviour::Moving = self.behaviour {
+            if self.requests_should_stop() {
+                self.connection.motor_direction(Dirn::Stop as u8);
+                self.connection.door_light(true);
+                self.requests_clear_at_current_floor(manager_tx);
+                self.start_time_out_thread();
+                self.behaviour = ElevatorBehaviour::DoorOpen;
             }
-            _ => {},
-        };
+        }
 
-        manager_tx.send(messages::Manager::ElevatorState(self.dirn, self.behaviour, self.floor)).expect("couldn't send to manager");
+        manager_tx
+            .send(messages::Manager::ElevatorState(self.dirn, self.behaviour, self.floor))
+            .expect("couldn't send to manager");
     }
 
-    pub fn fsm_on_stop_button_press(&mut self){}
+    pub fn fsm_on_stop_button_press(&mut self) {}
 
     fn start_time_out_thread(&mut self) {
         trace!("sleep");
@@ -165,68 +170,69 @@ impl ElevatorState {
             timer_tx_clone.send(true).expect("couldn't send to timer");
         });
     }
-        
+
     fn requests_choose_direction(&mut self) -> DirectionBehaviourPair {
         trace!("requests_choose_direction");
         match self.dirn {
             Dirn::Up => {
                 if self.requests_above() {
-                    DirectionBehaviourPair {dirn: Dirn::Up, behavior: ElevatorBehaviour::Moving}
+                    DirectionBehaviourPair { dirn: Dirn::Up, behavior: ElevatorBehaviour::Moving }
                 } else if self.requests_here() {
-                    DirectionBehaviourPair {dirn: Dirn::Down, behavior: ElevatorBehaviour::DoorOpen}
+                    DirectionBehaviourPair { dirn: Dirn::Down, behavior: ElevatorBehaviour::DoorOpen }
                 } else if self.requests_below() {
-                    DirectionBehaviourPair {dirn: Dirn::Down, behavior: ElevatorBehaviour::Moving}
+                    DirectionBehaviourPair { dirn: Dirn::Down, behavior: ElevatorBehaviour::Moving }
                 } else {
-                    DirectionBehaviourPair {dirn: Dirn::Stop, behavior: ElevatorBehaviour::Idle}
+                    DirectionBehaviourPair { dirn: Dirn::Stop, behavior: ElevatorBehaviour::Idle }
                 }
-            },
+            }
             Dirn::Down => {
                 if self.requests_below() {
-                    DirectionBehaviourPair {dirn: Dirn::Down, behavior: ElevatorBehaviour::Moving}
+                    DirectionBehaviourPair { dirn: Dirn::Down, behavior: ElevatorBehaviour::Moving }
                 } else if self.requests_here() {
-                    DirectionBehaviourPair {dirn: Dirn::Up, behavior: ElevatorBehaviour::DoorOpen}
+                    DirectionBehaviourPair { dirn: Dirn::Up, behavior: ElevatorBehaviour::DoorOpen }
                 } else if self.requests_above() {
-                    DirectionBehaviourPair {dirn: Dirn::Up, behavior: ElevatorBehaviour::Moving}
+                    DirectionBehaviourPair { dirn: Dirn::Up, behavior: ElevatorBehaviour::Moving }
                 } else {
-                    DirectionBehaviourPair {dirn: Dirn::Stop, behavior: ElevatorBehaviour::Idle}
+                    DirectionBehaviourPair { dirn: Dirn::Stop, behavior: ElevatorBehaviour::Idle }
                 }
-            },
+            }
             Dirn::Stop => {
                 if self.requests_here() {
-                    DirectionBehaviourPair {dirn: Dirn::Stop, behavior: ElevatorBehaviour::DoorOpen}
+                    DirectionBehaviourPair { dirn: Dirn::Stop, behavior: ElevatorBehaviour::DoorOpen }
                 } else if self.requests_above() {
-                    DirectionBehaviourPair {dirn: Dirn::Up, behavior: ElevatorBehaviour::Moving}
+                    DirectionBehaviourPair { dirn: Dirn::Up, behavior: ElevatorBehaviour::Moving }
                 } else if self.requests_below() {
-                    DirectionBehaviourPair {dirn: Dirn::Down, behavior: ElevatorBehaviour::Moving}
+                    DirectionBehaviourPair { dirn: Dirn::Down, behavior: ElevatorBehaviour::Moving }
                 } else {
-                    DirectionBehaviourPair {dirn: Dirn::Stop, behavior: ElevatorBehaviour::Idle}
+                    DirectionBehaviourPair { dirn: Dirn::Stop, behavior: ElevatorBehaviour::Idle }
                 }
             }
         }
     }
-    
+
     fn requests_clear_at_current_floor(&mut self, manager_tx: &Sender<messages::Manager>) {
         trace!("requests_clear_at_current_floor");
         let mut should_clear = [false; 3];
         self.requests[self.floor as usize][Button::Cab as usize] = false;
         should_clear[Button::Cab as usize] = true;
+
         match self.dirn {
             Dirn::Up => {
-                if !self.requests_above() && (self.requests[self.floor as usize][Button::HallUp as usize] == false) {
+                if !self.requests_above() && !self.requests[self.floor as usize][Button::HallUp as usize] {
                     self.requests[self.floor as usize][Button::HallDown as usize] = false;
                     should_clear[Button::HallDown as usize] = true;
                 }
                 self.requests[self.floor as usize][Button::HallUp as usize] = false;
                 should_clear[Button::HallUp as usize] = true;
-            },
+            }
             Dirn::Down => {
-                if !self.requests_below() && (self.requests[self.floor as usize][Button::HallDown as usize] == false) {
+                if !self.requests_below() && !self.requests[self.floor as usize][Button::HallDown as usize] {
                     self.requests[self.floor as usize][Button::HallUp as usize] = false;
                     should_clear[Button::HallUp as usize] = true;
                 }
                 self.requests[self.floor as usize][Button::HallDown as usize] = false;
                 should_clear[Button::HallDown as usize] = true;
-            },
+            }
             Dirn::Stop => {
                 self.requests[self.floor as usize][Button::HallUp as usize] = false;
                 self.requests[self.floor as usize][Button::HallDown as usize] = false;
@@ -234,58 +240,51 @@ impl ElevatorState {
                 should_clear[Button::HallDown as usize] = true;
             }
         }
-        manager_tx.send(messages::Manager::ClearRequest(self.floor as usize, should_clear)).expect("couldn't send to manager");
+
+        manager_tx
+            .send(messages::Manager::ClearRequest(self.floor as usize, should_clear))
+            .expect("couldn't send to manager");
     }
-    
+
     fn requests_here(&self) -> bool {
         trace!("requests_here");
-        for b in 0..CALL_COUNT {
-            if self.requests[self.floor as usize][b as usize] {
-                return true;
-            }
-        }
-        return false;
+        self.requests[self.floor as usize].iter().any(|&r| r)
     }
-    
+
     fn requests_below(&self) -> bool {
         trace!("requests_below");
         for f in 0..self.floor {
-            for b in 0..CALL_COUNT {
-                if self.requests[f as usize][b as usize] {
-                    return true;
-                }
+            if self.requests[f as usize].iter().any(|&r| r) {
+                return true;
             }
         }
-        return false;
+        false
     }
-    
+
     fn requests_above(&self) -> bool {
         trace!("requests_above");
-        for f in ((self.floor+1) as usize)..config::FLOOR_COUNT {
-            for b in 0..CALL_COUNT {
-                if self.requests[f as usize][b as usize] {
-                    return true;
-                }
+        for f in (self.floor + 1) as usize..config::FLOOR_COUNT {
+            if self.requests[f].iter().any(|&r| r) {
+                return true;
             }
         }
-        return false;
+        false
     }
-    
+
     fn requests_should_stop(&self) -> bool {
         trace!("requests_should_stop");
         match self.dirn {
             Dirn::Down => {
-                self.requests[self.floor as usize][Button::HallDown as usize] == true||
-                    self.requests[self.floor as usize][Button::Cab as usize] == true||
-                    !self.requests_below()
-            },
+                self.requests[self.floor as usize][Button::HallDown as usize]
+                    || self.requests[self.floor as usize][Button::Cab as usize]
+                    || !self.requests_below()
+            }
             Dirn::Up => {
-                self.requests[self.floor as usize][Button::HallUp as usize] == true||
-                    self.requests[self.floor as usize][Button::Cab as usize] == true||
-                    !self.requests_above()                
-            },
-            Dirn::Stop => {true}
+                self.requests[self.floor as usize][Button::HallUp as usize]
+                    || self.requests[self.floor as usize][Button::Cab as usize]
+                    || !self.requests_above()
+            }
+            Dirn::Stop => true,
         }
     }
-    
 }

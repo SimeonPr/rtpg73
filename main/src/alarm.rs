@@ -1,8 +1,12 @@
-use core::time::Duration;
+// Essentials
+use std::time::Duration;
 use std::thread;
+
+// Project modules
 
 use crossbeam_channel as cbc;
 use log::debug;
+
 pub fn run(alarm_tx: cbc::Sender<u8>, timeout: Duration) {
     loop {
         debug!("Going to sleep");

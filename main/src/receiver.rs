@@ -1,12 +1,10 @@
 use core::net::SocketAddr;
 use std::net::UdpSocket;
-
 use crossbeam_channel as cbc;
 use log::{debug, info, error};
+use crate::models::{Manager};
 
-use crate::messages;
-
-pub fn run(manager_tx: cbc::Sender<messages::Manager>) {
+pub fn run(manager_tx: cbc::Sender<Manager>) {
     debug!("Receiver up and running...");
     let addr: SocketAddr = "0.0.0.0:4567".parse().expect("address should be parseable");
 
@@ -24,7 +22,7 @@ pub fn run(manager_tx: cbc::Sender<messages::Manager>) {
             },
             _ => ()
         }
-        match bincode::deserialize::<messages::Manager>(&buf) {
+        match bincode::deserialize::<Manager>(&buf) {
             Ok(deserialized) => manager_tx.send(deserialized).expect("message should be sendable"),
             Err(e) => {
                 error!("received malformatted packet: {e}");

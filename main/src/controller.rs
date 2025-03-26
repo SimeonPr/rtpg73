@@ -4,12 +4,12 @@ use driver_rust::elevio::elev as e;
 use log::debug;
 use log::info;
 
-use crate::messages;
+use crate::models::{Manager, Controller};
 use crate::fsm;
 use std::thread::spawn;
 use std::time::Duration;
 
-pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::Sender<messages::Manager>, elevator_connection: e::Elevator) -> std::io::Result<()> {
+pub fn run(controller_rx: cbc::Receiver<Controller>, manager_tx: cbc::Sender<Manager>, elevator_connection: e::Elevator) -> std::io::Result<()> {
     info!("Controller up and running.");
     let (timer_tx, timer_rx) = cbc::unbounded::<bool>();
     let mut elevator_state = fsm::ElevatorState::init_elevator(elevator_connection.clone(), timer_tx);
@@ -45,7 +45,7 @@ pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::
             recv(controller_rx) -> a => {
                 let message = a.expect("controller couldn't receive");
                 match message {
-                    messages::Controller::Requests(requests) => {
+                    Controller::Requests(requests) => {
                         debug!("Received Requests");
                         elevator_state.fsm_on_new_requests(requests, &manager_tx);
                     }
