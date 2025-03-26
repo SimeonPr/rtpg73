@@ -383,7 +383,7 @@ impl WorldView {
             if let Some(e) = elevators.get(&id) {
                 if e.last_moved.elapsed().expect("elapsed() failed") < Duration::from_secs(5) ||
                     e.last_assigned.elapsed().expect("elapsed() failed") < Duration::from_secs(5) ||
-                    e.last_assigned < e.last_moved {
+                    e.last_assigned <= e.last_moved {
                     assignable_elevators.insert(id);                    
                 }
             }
