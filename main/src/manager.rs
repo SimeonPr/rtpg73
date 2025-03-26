@@ -239,7 +239,8 @@ impl WorldView {
         if let Some(e) = foreign_elevators.get(&foreign_id) { 
             let u = wv_clone.elevators.get_mut(&foreign_id).expect("key should have been available");
             u.last_received = current_time;
-            if e.state.current_floor != u.state.current_floor {
+            if e.state.current_floor != u.state.current_floor ||
+                e.state.behaviour != u.state.behaviour {
                 u.last_moved = current_time;
             }
             u.state = e.state;
@@ -395,9 +396,29 @@ impl WorldView {
     pub fn assign_requests(&mut self) -> fsm::ControllerRequests {
         // Get Hall Requests
         let assignable_elevators = self.get_assignable_elevators();
+        let current_time = SystemTime::now();
         debug!("Assignable Elevators: {:?}", assignable_elevators);
-        if let Some(result) = cost::elevator_algorithm(&self, assignable_elevators) {
+        if let Some(result) = cost::elevator_algorithm(&self, &assignable_elevators) {
             debug!("RequestAssignment: {:?}", result);
+            for &id in &assignable_elevators {
+                if let Some(e) = self.elevators.get_mut(&id) {
+                    let mut has_requests = false;
+                    if let Some(reqs) = result.get(&id) {
+                        for floor in reqs.iter() {
+                            for dir in floor.iter() {
+                                if *dir {has_requests = true;}
+                            }
+                        }
+                    }
+
+                    if has_requests {
+                        if e.last_assigned < e.last_moved ||
+                            e.last_moved.elapsed().expect("elapsed() failed") < Duration::from_secs(5) {
+                            e.last_assigned = current_time;
+                        }
+                    }
+                }
+            }
             result.get(&self.get_id()).unwrap().clone()
         } else {
             error!("Elevator Algorithm failed");

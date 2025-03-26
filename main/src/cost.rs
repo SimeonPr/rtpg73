@@ -36,7 +36,7 @@ fn run_hra_executable(executable: &str, input_json: &str) -> Option<Vec<u8>> {
 }
 
 
-pub fn elevator_algorithm(world_view: &WorldView, ids: HashSet<u8>) -> Option<HashMap<u8,fsm::ControllerRequests>> {
+pub fn elevator_algorithm(world_view: &WorldView, ids: &HashSet<u8>) -> Option<HashMap<u8,fsm::ControllerRequests>> {
     let mut states = HashMap::new();
     let elevators = world_view.get_elevators();
     for id in ids.iter() {
@@ -73,11 +73,10 @@ pub fn elevator_algorithm(world_view: &WorldView, ids: HashSet<u8>) -> Option<Ha
     
     let output = run_hra_executable(&hra_executable, &json_string)?;
     
-    let own_id = world_view.get_id();
     let output_json = String::from_utf8(output).ok()?;
     let mut result: HashMap<u8, fsm::ControllerRequests> = HashMap::new();
-    for &id in &ids {
-        let mut to_insert = covert_json_to_controller_reqs(&output_json, own_id)?;
+    for &id in ids {
+        let mut to_insert = covert_json_to_controller_reqs(&output_json, id)?;
         let elevator = elevators.get(&id)?;
         for (floor, request) in elevator.get_cab_requests().iter().enumerate() {
             if request.get_state() == RequestState::Confirmed {
