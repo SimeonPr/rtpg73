@@ -1,3 +1,4 @@
+//! Receives packets via the network
 use core::net::SocketAddr;
 use std::net::UdpSocket;
 

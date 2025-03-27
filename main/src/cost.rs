@@ -1,3 +1,4 @@
+//! Execution of Hall Request Assigner
 use serde_json;
 use std::collections::HashMap;
 use serde_json::{Value, json};

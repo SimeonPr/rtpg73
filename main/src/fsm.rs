@@ -1,3 +1,4 @@
+//! State Machine for the Elevator Logic
 use driver_rust::elevio::elev::Elevator;
 use log::{trace, debug};
 use serde::{Serialize, Deserialize};

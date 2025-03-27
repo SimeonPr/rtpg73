@@ -1,3 +1,4 @@
+//! Defines Messages (Enums) to be shared internally and via the network
 use serde::{Serialize, Deserialize};
 use std::time::SystemTime;
 use crate::manager;

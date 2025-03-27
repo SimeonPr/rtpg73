@@ -1,3 +1,4 @@
+//! Node in a distributed elevator system
 use core::time::Duration;
 use std::thread::spawn;
 use std::{process, panic};
@@ -17,7 +18,8 @@ mod lights;
 mod fsm;
 mod config;
 use std::env;
-
+/// This is the main entrypoint of the program. It gets the command line arguments
+/// and starts threads with the components of the system.
 fn main() {
 
     // crash on any thread panic

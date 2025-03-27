@@ -1,3 +1,4 @@
+//! Code to set button lights
 use crossbeam_channel as cbc;
 use log::debug;
 use log::trace;

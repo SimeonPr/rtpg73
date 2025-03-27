@@ -1,3 +1,4 @@
+//! Sends messages to the manager periodically
 use core::time::Duration;
 use std::thread;
 

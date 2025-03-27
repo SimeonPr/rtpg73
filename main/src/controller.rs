@@ -1,3 +1,4 @@
+//! Receives events and drives state machine
 use crossbeam_channel as cbc;
 use driver_rust::elevio;
 use driver_rust::elevio::elev as e;
@@ -8,7 +9,7 @@ use crate::messages;
 use crate::fsm;
 use std::thread::spawn;
 use std::time::Duration;
-
+/// A loop processing hardware events, communicating with the manager and driving the elevator state machine. It does not handle call button presses.
 pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::Sender<messages::Manager>, elevator_connection: e::Elevator) -> std::io::Result<()> {
     info!("Controller up and running.");
     let (timer_tx, timer_rx) = cbc::unbounded::<bool>();

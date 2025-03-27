@@ -1,3 +1,4 @@
+//! Contains distributed algorithms for request
 use driver_rust::elevio::poll::CallButton;
 use log::error;
 use serde::{Deserialize, Serialize};
@@ -440,7 +441,7 @@ impl WorldView {
     }
 }
 
-
+/// A loop processing messages from receiver and controller. It also handles call button presses.
 pub fn run(
     id: u8,
     manager_rx: cbc::Receiver<messages::Manager>,

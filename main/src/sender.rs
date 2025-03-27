@@ -1,3 +1,4 @@
+//! Sends outgoing messages via the network
 use core::net::SocketAddr;
 use std::net::UdpSocket;
 
