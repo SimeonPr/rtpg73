@@ -318,8 +318,8 @@ impl WorldView {
                         }
                     },
                     RequestState::Finished => {
-                        if alive_elevators.is_subset(&wv_clone.hall_requests[floor][dir].acks) {
-                            wv_clone.hall_requests[floor][dir].set_to(RequestState::None, wv_clone.id);
+                        if alive_elevators.is_subset(&elev.cab_requests[floor].acks) {
+                            elev.cab_requests[floor].set_to(RequestState::None, wv_clone.id);
                             updated = true;
                         }
                     },
