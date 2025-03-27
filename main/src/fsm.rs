@@ -7,7 +7,6 @@ use std::time::Duration;
 use crossbeam_channel::{self as cbc, Sender};
 use crate::{config, messages};
 
-const CALL_COUNT: usize = 3;
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum ElevatorBehaviour {
     #[serde(rename = "idle")]
@@ -32,7 +31,7 @@ pub enum Button {
     HallDown,
     Cab
 }
-pub type ControllerRequests = [[bool;CALL_COUNT]; config::FLOOR_COUNT];
+pub type ControllerRequests = [[bool;config::CALL_COUNT]; config::FLOOR_COUNT];
 #[derive(Debug)]
 pub struct ElevatorState {
     timer_tx: cbc::Sender<bool>,
@@ -60,7 +59,7 @@ impl ElevatorState {
             no_of_timer_threads: 0,
             floor: -1,
             dirn: Dirn::Stop,
-            requests: [[false;CALL_COUNT]; config::FLOOR_COUNT],
+            requests: [[false;config::CALL_COUNT]; config::FLOOR_COUNT],
             behaviour: ElevatorBehaviour::Idle,
             door_open_duration: 3,
             connection: elevator_connection,
@@ -237,7 +236,7 @@ impl ElevatorState {
     
     fn requests_here(&self) -> bool {
         trace!("requests_here");
-        for b in 0..CALL_COUNT {
+        for b in 0..config::CALL_COUNT {
             if self.requests[self.floor as usize][b as usize] {
                 return true;
             }
@@ -248,7 +247,7 @@ impl ElevatorState {
     fn requests_below(&self) -> bool {
         trace!("requests_below");
         for f in 0..self.floor {
-            for b in 0..CALL_COUNT {
+            for b in 0..config::CALL_COUNT {
                 if self.requests[f as usize][b as usize] {
                     return true;
                 }
@@ -260,7 +259,7 @@ impl ElevatorState {
     fn requests_above(&self) -> bool {
         trace!("requests_above");
         for f in ((self.floor+1) as usize)..config::FLOOR_COUNT {
-            for b in 0..CALL_COUNT {
+            for b in 0..config::CALL_COUNT {
                 if self.requests[f as usize][b as usize] {
                     return true;
                 }
