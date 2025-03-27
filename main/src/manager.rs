@@ -279,7 +279,7 @@ impl WorldView {
         let mut updated = false;
 
         // get alive elevators
-        let alive_elevators = wv_clone.get_alive_elevators(1);
+        let alive_elevators = wv_clone.get_alive_elevators(2);
 
         // go through hall_requests
         for floor in 0..config::FLOOR_COUNT {
