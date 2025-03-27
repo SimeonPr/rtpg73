@@ -23,6 +23,7 @@ pub enum RequestState {
     Unconfirmed = 1,
     //Barrier
     Confirmed = 2,
+    Finished = 3,
 }
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Request {
@@ -45,8 +46,11 @@ impl Request {
         let mut updated: bool = false;
         let new_state = match (self.state, r2.state) {
             (RequestState::None, RequestState::Unconfirmed) => RequestState::Unconfirmed,
+            (RequestState::None, RequestState::Confirmed) => RequestState::Confirmed,
             (RequestState::Unconfirmed, RequestState::Confirmed) => RequestState::Confirmed,
-            (RequestState::Confirmed, RequestState::None) => RequestState::None,
+            (RequestState::Confirmed, RequestState::Finished) => RequestState::Finished,
+            (RequestState::Finished, RequestState::None) => RequestState::None,
+            (RequestState::Finished, RequestState::Unconfirmed) => RequestState::Unconfirmed,
             _ => self.state
         };
         if self.state != new_state { // state changed
@@ -292,6 +296,12 @@ impl WorldView {
                             updated = true;
                         }
                     },
+                    RequestState::Finished => {
+                        if alive_elevators.is_subset(&wv_clone.hall_requests[floor][dir].acks) {
+                            wv_clone.hall_requests[floor][dir].set_to(RequestState::None, wv_clone.id);
+                            updated = true;
+                        }
+                    },
                     _ => ()
                 }
             }
@@ -304,6 +314,12 @@ impl WorldView {
                     RequestState::Unconfirmed => {
                         if alive_elevators.is_subset(&elev.cab_requests[floor].acks) {
                             elev.cab_requests[floor].set_to(RequestState::Confirmed, wv_clone.id);
+                            updated = true;
+                        }
+                    },
+                    RequestState::Finished => {
+                        if alive_elevators.is_subset(&wv_clone.hall_requests[floor][dir].acks) {
+                            wv_clone.hall_requests[floor][dir].set_to(RequestState::None, wv_clone.id);
                             updated = true;
                         }
                     },
