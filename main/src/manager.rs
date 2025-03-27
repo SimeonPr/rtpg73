@@ -383,12 +383,12 @@ impl WorldView {
         debug!("Clearing {:?}", &should_clear);
         for i in 0..2 {
             if should_clear[i] {
-                wv_clone.hall_requests[floor][i].set_to(RequestState::None, wv_clone.id);
+                wv_clone.hall_requests[floor][i].set_to(RequestState::Finished, wv_clone.id);
             }
         }
 
         if should_clear[2] {
-            own_elev.cab_requests[floor].set_to(RequestState::None, wv_clone.id);
+            own_elev.cab_requests[floor].set_to(RequestState::Finished, wv_clone.id);
         }
         (wv_clone, true)
     }
@@ -435,14 +435,14 @@ impl WorldView {
         for floor in 0..config::FLOOR_COUNT {
             for dir in 0..2 {
                 match self.hall_requests[floor][dir].state {
-                    RequestState::Confirmed => {
+                    RequestState::Confirmed|RequestState::Finished => {
                         requests[floor][dir] = true;
                     },
                     _ => (),
                 }
             }
             match elev.cab_requests[floor].state {
-                RequestState::Confirmed => {
+                RequestState::Confirmed|RequestState::Finished => {
                     requests[floor][2] = true;
                 },
                 _ => (),
