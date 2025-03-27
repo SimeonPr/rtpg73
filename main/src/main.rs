@@ -58,14 +58,13 @@ fn main() {
     let (call_button_tx, call_button_rx) = cbc::unbounded::<elevio::poll::CallButton>();
 
     // create elevator_connection object
-    let elev_num_floors = 4;
     let address = match env::var("ELEVATOR_PORT") {
         Ok(port) => format!("host.docker.internal:{}", port),
         Err(_) => format!("127.0.0.1:15657")
     };
 
     let elevator_connection =
-        e::Elevator::init(&address, elev_num_floors).expect("hardware must be available");
+        e::Elevator::init(&address, config::FLOOR_COUNT as u8).expect("hardware must be available");
 
     info!("Spawning threads.");
     // spawn manager
