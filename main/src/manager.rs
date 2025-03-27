@@ -234,36 +234,6 @@ impl WorldView {
         }
     }
 
-    /// Handles recovery by adopting a foreign WorldView humbly
-    pub fn handle_humbly(
-        &self,
-        foreign_world_view: WorldView
-    ) -> WorldView {
-        let mut wv_clone = self.clone();
-        info!("Humble Recovery");
-        let id = wv_clone.id;
-        let old_elevator = wv_clone.elevators.get(&id).unwrap().clone();
-        wv_clone = foreign_world_view.clone();
-        wv_clone.id = id;
-        if !wv_clone.elevators.contains_key(&id) {
-            wv_clone.elevators.insert(id, old_elevator.clone());
-        }
-        wv_clone
-    }
-    pub fn handle_network_recovery(
-        &self,
-        foreign_world_view: WorldView
-    ) -> WorldView {
-        let mut wv_clone = self.clone();
-        info!("Network Recovery");
-        wv_clone.hall_requests = foreign_world_view.hall_requests;
-        for (key, elev) in foreign_world_view.elevators {
-            if key == self.id {continue;}
-            wv_clone.elevators.insert(key, elev);
-        }
-        wv_clone
-    }
-
     /// Merges a foreign WorldView into this one
     /// Returns updated WorldView and whether changes were made
     pub fn handle_foreign_world_view(
@@ -549,51 +519,26 @@ pub fn run(
     info!("Manager up and running...");
     let mut world_view = WorldView::init(id);
     let mut network_available = true;
-    let mut humble_counter = 5;
     loop {
         let mut updated = false;
         cbc::select! {
             recv(manager_rx) -> a => {
                 let message = a.expect("couldn't get message");
                 match message {
-                    messages::Manager::Ping(id) => {
-                        debug!("Received Ping({})", id);
-                        network_available = true;
-                        if world_view.get_id() != id {
-                            sender_tx.send(messages::Manager::Pong(world_view.get_id())).expect("send to sender failed");
-                        }
-                    },
-                    messages::Manager::Pong(id) => {
-                        debug!("Received Pong({})", id);
-                        network_available = true;
-                    },
                     messages::Manager::NetworkError => {
                         debug!("Received NetworkError");
                         network_available = false;
                     },
-                    messages::Manager::HeartBeat(_, foreign_world_view) => {
+                    messages::Manager::HeartBeat(foreign_world_view) => {
                         debug!("Received WorldView");
                         network_available = true;
                         if foreign_world_view.get_id() != world_view.get_id() {
-                            if humble_counter > 0 {
-                                let new_wv = world_view.handle_humbly(foreign_world_view);
-                                world_view = new_wv;
-                                humble_counter = 0;
-                            } else if !network_available {
-                                let new_wv = world_view.handle_network_recovery(foreign_world_view);
-                                world_view = new_wv;
-                                updated = true;
-                                network_available = true;
-                            } else {
-                                let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
-                                if up {
-                                    world_view.compare_world_views(&new_wv);
-                                }
-                                world_view = new_wv;                                   
-                                updated = up;
+                            let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
+                            if up {
+                                world_view.compare_world_views(&new_wv);
                             }
-                        } else {
-                            debug!("RECEIVED FROM MYSELF");
+                            world_view = new_wv;                                   
+                            updated = up;
                         }
                     },
                     messages::Manager::ElevatorState(dirn, behaviour, floor) => {
@@ -619,24 +564,15 @@ pub fn run(
             recv(call_button_rx) -> a => {
                 debug!("Received ButtonPress");
                 let button_press = a.expect("couldn't get message");
-                if humble_counter == 0 && network_available ||
-                button_press.call == 2 {
-                    let (new_wv, up) = world_view.handle_button_press(&button_press);
-                    if up {
-                        world_view.compare_world_views(&new_wv);
-                        world_view = new_wv;
-                    }
-                    updated = up;
+                let (new_wv, up) = world_view.handle_button_press(&button_press);
+                if up {
+                    world_view.compare_world_views(&new_wv);
+                    world_view = new_wv;
                 }
+                updated = up;
             },
             recv(alarm_rx) -> _a => {
                 debug!("Received Alarm");
-                debug!("network_available: {}, humble_counter: {}", network_available, humble_counter);
-                if !network_available {
-                    sender_tx.send(messages::Manager::Ping(world_view.get_id())).expect("send to sender failed");
-                } else if humble_counter > 0 {
-                    humble_counter -= 1;
-                } 
                 let (new_wv, up) = world_view.update_states_at_barrier();
                 if up {
                     world_view.compare_world_views(&new_wv);
@@ -660,10 +596,8 @@ pub fn run(
         }
 
         if updated {
-            if humble_counter <= 0 && network_available {
-                let world_view_clone = world_view.clone();
-                sender_tx.send(messages::Manager::HeartBeat(std::time::SystemTime::now(), world_view_clone)).expect("send to sender failed");
-            }
+            let world_view_clone = world_view.clone();
+            sender_tx.send(messages::Manager::HeartBeat(world_view_clone)).expect("send to sender failed");
             for elevator in world_view.elevators.values_mut() {
                 elevator.has_request = false;
             }
@@ -671,7 +605,6 @@ pub fn run(
             for (id, elevator) in world_view.elevators.iter_mut() {
                 if active_elevators.contains(&(*id as i32)) {
                     elevator.has_request = true;
-
                     // if already has_request, do not reset counter
                 } else {
                     elevator.last_moved = SystemTime::now();
