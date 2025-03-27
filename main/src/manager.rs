@@ -222,6 +222,19 @@ impl WorldView {
         }
         wv_clone
     }
+    pub fn handle_network_recovery(
+        &self,
+        foreign_world_view: WorldView
+    ) -> WorldView {
+        let mut wv_clone = self.clone();
+        info!("Network Recovery");
+        wv_clone.hall_requests = foreign_world_view.hall_requests;
+        for (key, elev) in foreign_world_view.elevators {
+            if key == self.id {continue;}
+            wv_clone.elevators.insert(key, elev);
+        }
+        wv_clone
+    }
     pub fn handle_foreign_world_view(
         &self,
         foreign_world_view: WorldView
@@ -402,6 +415,7 @@ impl WorldView {
             {continue;}
             alive_elevators.insert(*id);
         }
+        debug!("AliveElevators({timeout}): {:?}", alive_elevators);
         alive_elevators
     }
     pub fn get_id(&self) -> u8 {
@@ -435,14 +449,14 @@ impl WorldView {
         for floor in 0..config::FLOOR_COUNT {
             for dir in 0..2 {
                 match self.hall_requests[floor][dir].state {
-                    RequestState::Confirmed|RequestState::Finished => {
+                    RequestState::Confirmed => {
                         requests[floor][dir] = true;
                     },
                     _ => (),
                 }
             }
             match elev.cab_requests[floor].state {
-                RequestState::Confirmed|RequestState::Finished => {
+                RequestState::Confirmed => {
                     requests[floor][2] = true;
                 },
                 _ => (),
@@ -471,7 +485,6 @@ pub fn run(
     let mut world_view = WorldView::init(id);
     let mut network_available = true;
     let mut humble_counter = 5;
-    let mut foreign_instants: HashMap<u8, std::time::SystemTime> = HashMap::new();
     loop {
         let mut updated = false;
         cbc::select! {
@@ -492,35 +505,27 @@ pub fn run(
                     messages::Manager::NetworkError => {
                         debug!("Received NetworkError");
                         network_available = false;
-                        humble_counter = 5;
                     },
-                    messages::Manager::HeartBeat(time_stamp, foreign_world_view) => {
+                    messages::Manager::HeartBeat(_, foreign_world_view) => {
                         debug!("Received WorldView");
                         network_available = true;
                         if foreign_world_view.get_id() != world_view.get_id() {
-                            let mut new = false;
-                            if !foreign_instants.contains_key(&foreign_world_view.get_id()) {
-                                debug!("INSERTING TIMESTAMP");
-                                foreign_instants.insert(foreign_world_view.get_id(), time_stamp);
-                                new = true;
-                            }
-                            let old_ts = foreign_instants.get(&foreign_world_view.get_id()).unwrap();
-                            if *old_ts >= time_stamp && !new {
-                                debug!("RECEIVED OLD PACKET");
+                            if humble_counter > 0 {
+                                let new_wv = world_view.handle_humbly(foreign_world_view);
+                                world_view = new_wv;
+                                humble_counter = 0;
+                            } else if !network_available {
+                                let new_wv = world_view.handle_network_recovery(foreign_world_view);
+                                world_view = new_wv;
+                                updated = true;
+                                network_available = true;
                             } else {
-                                foreign_instants.insert(foreign_world_view.get_id(), time_stamp);
-                                if humble_counter > 0 {
-                                    let new_wv = world_view.handle_humbly(foreign_world_view);
-                                    world_view = new_wv;
-                                    humble_counter = 0;
-                                } else {
-                                    let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
-                                    if up {
-                                        world_view.compare_world_views(&new_wv);
-                                    }
-                                    world_view = new_wv;                                   
-                                    updated = up;
+                                let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
+                                if up {
+                                    world_view.compare_world_views(&new_wv);
                                 }
+                                world_view = new_wv;                                   
+                                updated = up;
                             }
                         } else {
                             debug!("RECEIVED FROM MYSELF");
@@ -549,7 +554,8 @@ pub fn run(
             recv(call_button_rx) -> a => {
                 debug!("Received ButtonPress");
                 let button_press = a.expect("couldn't get message");
-                if humble_counter == 0 && network_available {
+                if humble_counter == 0 && network_available ||
+                button_press.call == 2 {
                     let (new_wv, up) = world_view.handle_button_press(&button_press);
                     if up {
                         world_view.compare_world_views(&new_wv);
@@ -565,14 +571,14 @@ pub fn run(
                     sender_tx.send(messages::Manager::Ping(world_view.get_id())).expect("send to sender failed");
                 } else if humble_counter > 0 {
                     humble_counter -= 1;
-                } else {
-                    let (new_wv, up) = world_view.update_states_at_barrier();
-                    if up {
-                        world_view.compare_world_views(&new_wv);
-                        world_view = new_wv;
-                    }
-                    updated = true;
+                } 
+                let (new_wv, up) = world_view.update_states_at_barrier();
+                if up {
+                    world_view.compare_world_views(&new_wv);
+                    world_view = new_wv;
                 }
+                updated = true;
+                
                 for (id, elevator) in world_view.elevators.iter_mut() {
                     if !elevator.has_request{
                         elevator.last_moved = SystemTime::now();

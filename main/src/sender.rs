@@ -18,20 +18,24 @@ pub fn run(
     let socket = UdpSocket::bind(addr).expect("address needs to be available");
     socket.set_broadcast(true).expect("broadcast is essential for communication");
     info!("Sending on {}", socket.local_addr().expect("local_addr should not failf"));
-
     loop {
         debug!("Waiting for input...");
         cbc::select! {
             recv(rx) -> a => {
                 let packet = a.expect("message should be unwrappable");
                 let serialized = bincode::serialize(&packet).expect("serialization should work");
-                match socket.send_to(&serialized, destination_addr) {
-                    Err(e) => {
-                        error!("broadcast on network failed: {}", e);
-                        manager_tx.send(messages::Manager::NetworkError).expect("channel should work");
-                        continue;
-                    },
-                    _ => ()
+                for tries in 0..5 {
+                    let res = socket.send_to(&serialized, destination_addr);
+                    match res {
+                        Err(e) => {
+                            if tries == 4 {
+                                error!("broadcast on network failed: {}", e);
+                                manager_tx.send(messages::Manager::NetworkError).expect("channel should work");
+                                continue;
+                            }
+                        },
+                        _ => break
+                    }
                 }
             }
         }        
