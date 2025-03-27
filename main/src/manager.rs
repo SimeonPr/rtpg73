@@ -518,20 +518,14 @@ pub fn run(
 ) {
     info!("Manager up and running...");
     let mut world_view = WorldView::init(id);
-    let mut network_available = true;
     loop {
         let mut updated = false;
         cbc::select! {
             recv(manager_rx) -> a => {
                 let message = a.expect("couldn't get message");
                 match message {
-                    messages::Manager::NetworkError => {
-                        debug!("Received NetworkError");
-                        network_available = false;
-                    },
                     messages::Manager::HeartBeat(foreign_world_view) => {
                         debug!("Received WorldView");
-                        network_available = true;
                         if foreign_world_view.get_id() != world_view.get_id() {
                             let (new_wv, up) = world_view.handle_foreign_world_view(foreign_world_view);
                             if up {

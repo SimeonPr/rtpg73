@@ -9,7 +9,6 @@ use crate::fsm;
 
 /// Messages sent to and from the Manager module
 pub enum Manager {
-    NetworkError,
     HeartBeat(manager::WorldView),
     ElevatorState(fsm::Dirn, fsm::ElevatorBehaviour, i8),
     ClearRequest(usize, [bool; 3]) //floor 

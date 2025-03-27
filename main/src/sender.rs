@@ -54,7 +54,6 @@ pub fn run(
                         Err(e) => {
                             if tries == 4 {
                                 error!("broadcast on network failed: {}", e);
-                                manager_tx.send(messages::Manager::NetworkError).expect("channel should work");
                                 continue;
                             }
                         },
