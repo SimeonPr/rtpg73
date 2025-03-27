@@ -79,15 +79,33 @@ fn run_hra_executable(executable: &str, input_json: &str) -> Option<Vec<u8>> {
 /// 2. Converts to JSON and passes to HRA executable
 /// 3. Parses HRA output into controller requests
 pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequests, Vec<i32>)>{
-    let mut states = HashMap::new();
+//    let mut states = HashMap::new();
     let alive_elevators = world_view.get_alive_elevators(2);
+    let working_elevators: std::collections::HashSet<u8> = alive_elevators
+        .iter()
+        .filter(|id| {
+            if let Some(elevator) = world_view.get_elevators().get(id) {
+                elevator.is_working
+        } else {
+            false
+        }
+    })
+    .cloned()
+    .collect();
+    if working_elevators.is_empty() {
+        return Some(([[false; config::CALL_COUNT]; config::FLOOR_COUNT], vec![]));
+    }
+
+    let mut states = HashMap::new();
+
+
     let elevators = world_view.get_elevators();
-    for id in alive_elevators.iter() {
+    for id in working_elevators.iter() {
         let elevator = elevators.get(id)?;
         let key = format!("id_{}", id);
         let cab_requests_bool = elevator.get_cab_requests()
             .map(|s| matches!(s.get_state(), RequestState::Confirmed));
-        // Use serde_json::json! to construct the elevator state object
+        
         let elevator_state = json!({
             "behaviour": elevator.state.behaviour,
             "floor": elevator.state.current_floor,
@@ -95,11 +113,11 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequ
             "cabRequests": cab_requests_bool,
         });
 
-        // Insert the elevator state into the HashMap with the generated key
+       
         states.insert(key, elevator_state);
     }
 
-    // Create hall requests dynamically
+   
     let hall_requests = world_view.get_hall_requests()
         .iter()
         .map(|row| row.iter()
@@ -119,7 +137,22 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequ
     let own_id = world_view.get_id();
     let output_json = String::from_utf8(output).ok()?;
 
-    covert_json_to_controller_reqs(&output_json, own_id).ok()
+    let all_reqs = covert_json_to_all_controller_reqs(&output_json)?;
+
+    let mut active_ids: Vec<i32> = Vec::new();
+    for (id, requests) in &all_reqs {
+    let has_requests = requests.iter().any(|floor| floor.iter().any(|&call| call));
+    if has_requests {
+        active_ids.push(*id);
+    }
+}
+
+
+let own_reqs = all_reqs
+    .get(&(own_id as i32))
+    .cloned()
+    .unwrap_or([[false; config::CALL_COUNT]; config::FLOOR_COUNT]);
+Some((own_reqs, active_ids))
 }
 
 /// Converts HRA output JSON into controller requests format.
@@ -136,39 +169,26 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequ
 /// - If JSON structure is invalid
 /// - If specified ID is not found in output
 /// - If any value conversion fails
-pub fn covert_json_to_controller_reqs(
-    output_json: &str,
-    id: u8,
-) -> Result<(fsm::ControllerRequests, Vec<i32>), serde_json::Error> {
-    let parsed_json: Value = serde_json::from_str(output_json)?;
+pub fn covert_json_to_all_controller_reqs(output_json: &str) -> Option<HashMap<i32, fsm::ControllerRequests>> {
+    let parsed_json: Value = serde_json::from_str(output_json).ok()?;
+    let mut assignments: HashMap<i32, fsm::ControllerRequests> = HashMap::new();
 
-    let active_elevators = ids_with_assigned_calls(&parsed_json)
-        .ok_or_else(|| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get active elevators")))?;
+    for (key, val) in parsed_json.as_object()? {
+        if let Some(id_str) = key.strip_prefix("id_") {
+            let id: i32 = id_str.parse().ok()?;
+            let mut controller_requests: fsm::ControllerRequests = [[false; config::CALL_COUNT]; config::FLOOR_COUNT];
 
-    let mut controller_requests: fsm::ControllerRequests =
-        [[false; config::CALL_COUNT]; config::FLOOR_COUNT];
+            for (floor, bool_pair) in val.as_array()?.iter().enumerate() {
+                let pair = bool_pair.as_array()?;
+                controller_requests[floor][0] = pair[0].as_bool()?;
+                controller_requests[floor][1] = pair[1].as_bool()?;
+            }
 
-    let id_data = parsed_json
-        .get(&format!("id_{}", id))
-        .ok_or_else(|| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "id not found")))?;
-
-    for (floor, bool_pair) in id_data
-        .as_array()
-        .ok_or_else(|| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "id_data is not an array")))?
-        .iter()
-        .enumerate()
-    {
-        // <-- Add this part back clearly!
-        let pair = bool_pair
-            .as_array()
-            .ok_or_else(|| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "pair is not an array")))?;
-
-        controller_requests[floor][0] = pair.get(0).and_then(|b| b.as_bool()).unwrap_or(false);
-        controller_requests[floor][1] = pair.get(1).and_then(|b| b.as_bool()).unwrap_or(false);
+            assignments.insert(id, controller_requests);
+        }
     }
 
-    // Move this outside the loop clearly:
-    Ok((controller_requests, active_elevators))
+    Some(assignments)
 }
 
 /// Extracts elevator IDs that have assigned calls from HRA output.

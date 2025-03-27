@@ -16,8 +16,6 @@ use std::time::Duration;
 use crossbeam_channel::{self as cbc, Sender};
 use crate::{config, messages};
 
-const CALL_COUNT: usize = 3;
-
 /// Represents possible elevator behaviors
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum ElevatorBehaviour {
@@ -53,9 +51,8 @@ pub enum Button {
     HallDown,  // Hall call down button
     Cab        // Cab (internal) button
 }
-
 /// Type alias for elevator requests matrix (floors × button types)
-pub type ControllerRequests = [[bool;CALL_COUNT]; config::FLOOR_COUNT];
+pub type ControllerRequests = [[bool;config::CALL_COUNT]; config::FLOOR_COUNT];
 
 /// Main elevator state structure
 #[derive(Debug)]
@@ -94,7 +91,7 @@ impl ElevatorState {
             no_of_timer_threads: 0,
             floor: -1,
             dirn: Dirn::Stop,
-            requests: [[false;CALL_COUNT]; config::FLOOR_COUNT],
+            requests: [[false;config::CALL_COUNT]; config::FLOOR_COUNT],
             behaviour: ElevatorBehaviour::Idle,
             door_open_duration: 3,
             connection: elevator_connection,
@@ -170,7 +167,9 @@ impl ElevatorState {
                 }
             },
             _ => {}
+            
         }
+        manager_tx.send(messages::Manager::ElevatorState(self.dirn, self.behaviour, self.floor)).expect("couldn't send to manager");
     }
     
     /// Updates obstruction sensor state
@@ -200,7 +199,6 @@ impl ElevatorState {
                     self.connection.door_light(true);
                     self.requests_clear_at_current_floor(&manager_tx);
                     self.start_time_out_thread();
-                    self.set_all_lights();
                     self.behaviour = ElevatorBehaviour::DoorOpen;
                 }
             }
@@ -224,16 +222,7 @@ impl ElevatorState {
             timer_tx_clone.send(true).expect("couldn't send to timer");
         });
     }
-    
-    fn set_all_lights(&self) {
-        trace!("set_all_lights");
-        for f in 0..config::FLOOR_COUNT {
-            for b in 0..CALL_COUNT {
-                self.connection.call_button_light(f as u8, b as u8, self.requests[f as usize][b as usize]);
-            }
-        }
-    }
-    
+        
     fn requests_choose_direction(&mut self) -> DirectionBehaviourPair {
         trace!("requests_choose_direction");
         match self.dirn {
@@ -307,7 +296,7 @@ impl ElevatorState {
     
     fn requests_here(&self) -> bool {
         trace!("requests_here");
-        for b in 0..CALL_COUNT {
+        for b in 0..config::CALL_COUNT {
             if self.requests[self.floor as usize][b as usize] {
                 return true;
             }
@@ -318,7 +307,7 @@ impl ElevatorState {
     fn requests_below(&self) -> bool {
         trace!("requests_below");
         for f in 0..self.floor {
-            for b in 0..CALL_COUNT {
+            for b in 0..config::CALL_COUNT {
                 if self.requests[f as usize][b as usize] {
                     return true;
                 }
@@ -330,7 +319,7 @@ impl ElevatorState {
     fn requests_above(&self) -> bool {
         trace!("requests_above");
         for f in ((self.floor+1) as usize)..config::FLOOR_COUNT {
-            for b in 0..CALL_COUNT {
+            for b in 0..config::CALL_COUNT {
                 if self.requests[f as usize][b as usize] {
                     return true;
                 }
@@ -484,7 +473,7 @@ mod fsm_on_init_between_floors {
                 no_of_timer_threads: 0,
                 floor: -1,
                 dirn: Dirn::Stop,
-                requests: [[false; CALL_COUNT]; config::FLOOR_COUNT],
+                requests: [[false; config::CALL_COUNT]; config::FLOOR_COUNT],
                 behaviour: ElevatorBehaviour::Idle,
                 door_open_duration: 3,
                 obstruction: false

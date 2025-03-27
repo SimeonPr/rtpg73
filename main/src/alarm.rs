@@ -1,4 +1,4 @@
-//! A module for handling periodic alarm notifications via a channel.
+//! Sends messages to the manager periodically
 use core::time::Duration;
 use std::thread;
 
