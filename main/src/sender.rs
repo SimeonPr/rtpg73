@@ -33,8 +33,7 @@ use bincode;
 /// - Logs errors for failed broadcasts
 /// - Panics only on initial setup failures (bind, broadcast enable)
 pub fn run(
-    rx: cbc::Receiver<messages::Manager>,
-    manager_tx: cbc::Sender<messages::Manager>
+    rx: cbc::Receiver<messages::Manager>
 ) {
     debug!("Sender up and running...");
     let addr: SocketAddr = "0.0.0.0:0".parse().expect("address should be parseable");
