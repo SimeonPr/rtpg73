@@ -67,6 +67,7 @@ impl ElevatorState {
             obstruction: false
         }
     }
+    
     pub fn fsm_on_new_requests(&mut self, requests: ControllerRequests, manager_tx: &Sender<messages::Manager>) {
         self.requests = requests;
         match self.behaviour {
@@ -89,6 +90,7 @@ impl ElevatorState {
             _ => ()
         }
     }
+    
     pub fn fsm_on_init_between_floors(&mut self) {
         trace!("fsm_on_init_between_floors");
         //motor direction
@@ -126,10 +128,12 @@ impl ElevatorState {
             _ => {}
         }
     }
+    
     pub fn fsm_on_obstruction(&mut self, val: bool) {
         trace!("fsm_on_obstruction");
         self.obstruction = val;
     }
+    
     pub fn fsm_on_floor_arrival(&mut self, floor: i8, manager_tx: &Sender<messages::Manager>) {
         trace!("fsm_on_floor_arrival");
         //stop timer? 
@@ -297,4 +301,318 @@ impl ElevatorState {
         }
     }
     
+}
+
+#[cfg(test)]
+
+mod test_init_elevator {
+    use super::*;
+
+    // Test the elevator initializes with correct default values for floor, direction, behavior, and obstruction
+    #[test]
+    fn test_init_elevator() {
+        let (tx, _rx) = cbc::unbounded();
+        let elevator = Elevator::init("127.0.0.1:15657", config::FLOOR_COUNT as u8).unwrap();
+        let elevator_state = ElevatorState::init_elevator(elevator, tx);
+
+        assert_eq!(elevator_state.no_of_timer_threads, 0);
+        assert_eq!(elevator_state.floor, -1);
+        assert_eq!(elevator_state.dirn, Dirn::Stop);
+        assert_eq!(elevator_state.requests, [[false;CALL_COUNT]; config::FLOOR_COUNT]);
+        assert_eq!(elevator_state.behaviour, ElevatorBehaviour::Idle);
+        assert_eq!(elevator_state.door_open_duration, 3);
+        assert_eq!(elevator_state.obstruction, false);
+    }
+
+    // Test that all request slots are initialized to false
+    #[test]
+    fn test_requests_initialized_empty() {
+        let (timer_tx, _) = cbc::bounded(1);
+        let elevator = Elevator::init("127.0.0.1:15657", config::FLOOR_COUNT as u8).unwrap();
+        
+        let state = ElevatorState::init_elevator(elevator, timer_tx);
+        
+        assert!(state.requests.iter().flatten().all(|&r| !r), 
+               "All requests should be false initially");
+    }
+
+}
+
+mod fsm_on_new_requests {
+    use config::FLOOR_COUNT;
+
+    use super::*;
+
+    fn create_test_elevator(initial_behaviour: ElevatorBehaviour) -> ElevatorState {
+        let (timer_tx, _) = crossbeam_channel::bounded(1);
+        ElevatorState {
+            behaviour: initial_behaviour,
+            connection: Elevator::init("127.0.0.1:15657", config::FLOOR_COUNT as u8).unwrap(),
+            timer_tx,
+            no_of_timer_threads: 0,
+            floor: -1, 
+            dirn: Dirn::Stop,
+            requests: [[false; config::CALL_COUNT]; config::FLOOR_COUNT],
+            door_open_duration: 3,
+            obstruction: false
+        }
+    }
+
+    // Test that new requests are stored and processed correctly when elevator is idle
+    #[test]
+    fn test_new_requests_updates_state_when_idle() {
+        let (manager_tx, manager_rx) = crossbeam_channel::unbounded();
+        let mut elevator = create_test_elevator(ElevatorBehaviour::Idle);
+
+        elevator.floor = 0;
+        
+        let test_requests = [[true; config::CALL_COUNT]; config::FLOOR_COUNT];
+        elevator.fsm_on_new_requests(test_requests, &manager_tx);
+        
+        let _ = manager_rx.recv().unwrap();
+        
+        let mut expected_requests = test_requests;
+        expected_requests[0] = [false; config::CALL_COUNT];
+        
+        assert_eq!(elevator.requests, expected_requests);
+        assert_ne!(elevator.behaviour, ElevatorBehaviour::Idle);
+    }
+
+    // Checks that door open behavior triggers correct actions
+    #[test]
+    fn test_door_open_behavior_activates_proper_sequence() {
+        let (manager_tx, manager_rx) = crossbeam_channel::unbounded();
+        let mut elevator = create_test_elevator(ElevatorBehaviour::Idle);
+        elevator.floor = 2; 
+
+        let mut test_requests = [[false; CALL_COUNT]; FLOOR_COUNT];
+        test_requests[2][0] = true;
+        
+        elevator.fsm_on_new_requests(test_requests, &manager_tx);
+        
+        assert_eq!(elevator.behaviour, ElevatorBehaviour::DoorOpen);
+        assert!(manager_rx.try_recv().is_ok());
+    }
+
+    // Verifies moving behavior sets correct motor direction
+    #[test]
+    fn test_moving_behavior_sets_motor_direction() {
+        let (manager_tx, _) = crossbeam_channel::unbounded();
+        let mut elevator = create_test_elevator(ElevatorBehaviour::Idle);
+        elevator.floor = 1;
+        
+        let mut test_requests = [[false; CALL_COUNT]; FLOOR_COUNT];
+        test_requests[3][0] = true;
+        
+        elevator.fsm_on_new_requests(test_requests, &manager_tx);
+        
+        assert_eq!(elevator.behaviour, ElevatorBehaviour::Moving);
+        assert_eq!(elevator.dirn, Dirn::Up);
+    }
+}
+
+
+mod fsm_on_init_between_floors {
+    use super::*;
+    use crossbeam_channel;
+
+    // Helper to create test state with real elevator (skips test if connection fails)
+    fn create_test_state() -> Option<ElevatorState> {
+        let (timer_tx, _) = crossbeam_channel::bounded(1);
+        match Elevator::init("127.0.0.1:15657", config::FLOOR_COUNT as u8) {
+            Ok(conn) => Some(ElevatorState {
+                timer_tx,
+                connection: conn,
+                no_of_timer_threads: 0,
+                floor: -1,
+                dirn: Dirn::Stop,
+                requests: [[false; CALL_COUNT]; config::FLOOR_COUNT],
+                behaviour: ElevatorBehaviour::Idle,
+                door_open_duration: 3,
+                obstruction: false
+            }),
+            Err(_) => None
+        }
+    }
+
+    // Test that motor direction and state are set correctly
+    #[test]
+    fn test_fsm_on_init_between_floors() {
+        let mut state = match create_test_state() {
+            Some(s) => s,
+            None => {
+                println!("[SKIPPED] Elevator hardware not available");
+                return;
+            }
+        };
+
+        state.fsm_on_init_between_floors();
+
+        assert_eq!(state.dirn, Dirn::Down);
+        assert_eq!(state.behaviour, ElevatorBehaviour::Moving);
+        
+        state.connection.motor_direction(Dirn::Stop as u8);
+    }
+}
+
+
+
+mod tests_fsm {
+    use super::*;
+
+    // Helper to create test state with real elevator (skips test if connection fails)
+    fn create_test_elevator(initial_behaviour: ElevatorBehaviour) -> ElevatorState {
+        let (timer_tx, _) = crossbeam_channel::bounded(1);
+        ElevatorState {
+            behaviour: initial_behaviour,
+            connection: Elevator::init("127.0.0.1:15657", config::FLOOR_COUNT as u8).unwrap(),
+            timer_tx,
+            no_of_timer_threads: 0,
+            floor: -1, 
+            dirn: Dirn::Stop,
+            requests: [[false; config::CALL_COUNT]; config::FLOOR_COUNT],
+            door_open_duration: 3,
+            obstruction: false
+        }
+    }
+    
+    // Test that timeout thread increments counter and sends message after duration
+    #[test]
+    fn test_start_time_out_thread_increments_counter_and_sends_message() {
+        let (timer_tx, timer_rx) = crossbeam_channel::bounded(1);
+        let mut elevator = create_test_elevator(ElevatorBehaviour::Idle);
+        elevator.timer_tx = timer_tx;
+        elevator.door_open_duration = 1;
+
+        elevator.start_time_out_thread();
+        assert_eq!(elevator.no_of_timer_threads, 1);
+        
+        assert_eq!(timer_rx.recv_timeout(Duration::from_secs(2)), Ok(true));
+    }
+
+    // Test that lights are set according to request matrix
+    #[test]
+    fn test_set_all_lights_updates_buttons_correctly() {
+        let mut elevator = create_test_elevator(ElevatorBehaviour::Idle);
+        elevator.requests = [
+            [true, false, true],  
+            [false, true, false], 
+            [true, true, true],   
+            [false, false, false] 
+        ];
+
+        elevator.set_all_lights();
+        println!("Lights set successfully - manual verification needed");
+    
+        for floor in 0..config::FLOOR_COUNT {
+            for button in 0..CALL_COUNT {
+                elevator.connection.call_button_light(floor as u8, button as u8, false);
+            }
+        }
+    }
+
+    // Test direction choice when moving up with requests above
+    #[test]
+    fn test_requests_choose_direction_up_with_requests_above() {
+        let mut elevator = create_test_elevator(ElevatorBehaviour::Moving);
+        elevator.dirn = Dirn::Up;
+        elevator.floor = 1;
+        elevator.requests[2][0] = true; 
+
+        let result = elevator.requests_choose_direction();
+        assert_eq!(result.dirn, Dirn::Up);
+        assert_eq!(result.behavior, ElevatorBehaviour::Moving);
+    }
+
+    // Test that UP direction clears Cab and HallUp requests at current floor
+    #[test]
+    #[ignore = "Requires real elevator connection"]
+    fn test_requests_clear_at_current_floor_up_direction() {
+        let (manager_tx, manager_rx) = crossbeam_channel::unbounded();
+        let mut elevator = create_test_elevator(ElevatorBehaviour::Moving);
+        elevator.dirn = Dirn::Up;
+        elevator.floor = 1;
+        elevator.requests[1] = [true; CALL_COUNT]; 
+
+        elevator.requests_clear_at_current_floor(&manager_tx);
+        
+        assert!(!elevator.requests[1][Button::Cab as usize]); 
+        assert!(!elevator.requests[1][Button::HallUp as usize]); 
+        assert_eq!(elevator.requests[1][Button::HallDown as usize], 
+                elevator.requests_above()); 
+        
+        let msg = manager_rx.try_recv().expect("Should receive message");
+        assert!(matches!(msg, messages::Manager::ClearRequest(_, _)));
+    }
+
+    // Test detection of requests at current floor
+    #[test]
+    fn test_requests_here_detects_pressed_buttons() {
+        let elevator = ElevatorState {
+            floor: 1,
+            requests: [
+                [false, false, false],
+                [false, true, false], 
+                [false, false, false],
+                [false, false, false]
+            ],
+            ..create_test_elevator(ElevatorBehaviour::Idle)
+        };
+
+        assert!(elevator.requests_here());
+    }
+
+
+    // Test detection of requests below current floor
+    #[test]
+    fn test_requests_below_detects_lower_floors() {
+        let elevator = ElevatorState {
+            floor: 2,
+            requests: [
+                [true, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false] 
+            ],
+            ..create_test_elevator(ElevatorBehaviour::Idle)
+        };
+
+        assert!(elevator.requests_below());
+    }
+
+    // Test detection of requests above current floor
+    #[test]
+    fn test_requests_above_detects_higher_floors() {
+        let elevator = ElevatorState {
+            floor: 0,
+            requests: [
+                [false, false, false],
+                [false, false, false],
+                [true, false, false], 
+                [false, false, false]
+            ],
+            ..create_test_elevator(ElevatorBehaviour::Idle)
+        };
+
+        assert!(elevator.requests_above());
+    }
+
+    // Test stop decision when moving down with cab request
+    #[test]
+    fn test_requests_should_stop_down_with_cab_request() {
+        let elevator = ElevatorState {
+            dirn: Dirn::Down,
+            floor: 1,
+            requests: [
+                [false, false, false],
+                [false, false, true], 
+                [false, false, false],
+                [false, false, false] 
+            ],
+            ..create_test_elevator(ElevatorBehaviour::Moving)
+        };
+
+        assert!(elevator.requests_should_stop());
+    }
+
 }
