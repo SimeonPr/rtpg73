@@ -31,14 +31,14 @@ procedure protectobj is
    protected body Resource is
       
     -- Fix the conditions
-      entry AllocateHigh(val: out IntVec.Vector) when not Busy and allocateHigh'Count = 0 is
+      entry AllocateHigh(val: out IntVec.Vector) when not Busy is
       begin
          -- Put_Line("AllocateHigh");
          Busy := True;
          val := Value;
       end AllocateHigh;
       
-      entry AllocateLow(val: out IntVec.Vector) when not Busy is
+      entry AllocateLow(val: out IntVec.Vector) when not Busy and allocateHigh'Count = 0 is
       begin
          -- Put_Line("AllocateLow");
          Busy := True;
