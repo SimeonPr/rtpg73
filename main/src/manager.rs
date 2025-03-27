@@ -92,7 +92,7 @@ pub struct Elevator {
     cab_requests: [Request; config::FLOOR_COUNT],
     last_moved: SystemTime,
     has_request: bool,
-    is_working: bool
+    pub is_working: bool
 }
 impl Elevator {
     pub fn new() -> Elevator {

@@ -39,7 +39,18 @@ fn run_hra_executable(executable: &str, input_json: &str) -> Option<Vec<u8>> {
 pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequests, Vec<i32>)>{
     
     let alive_elevators = world_view.get_alive_elevators(2);
-    if alive_elevators.is_empty() {
+    let working_elevators: std::collections::HashSet<u8> = alive_elevators
+        .iter()
+        .filter(|id| {
+            if let Some(elevator) = world_view.get_elevators().get(id) {
+                elevator.is_working
+        } else {
+            false
+        }
+    })
+    .cloned()
+    .collect();
+    if working_elevators.is_empty() {
         return Some(([[false; config::CALL_COUNT]; config::FLOOR_COUNT], vec![]));
     }
 
@@ -47,7 +58,7 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequ
 
 
     let elevators = world_view.get_elevators();
-    for id in alive_elevators.iter() {
+    for id in working_elevators.iter() {
         let elevator = elevators.get(id)?;
         let key = format!("id_{}", id);
         let cab_requests_bool = elevator.get_cab_requests()
