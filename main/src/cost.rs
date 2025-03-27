@@ -1,6 +1,6 @@
 use serde_json;
 use std::collections::HashMap;
-use serde_json::{Value, from_str, json};
+use serde_json::{Value, json};
 use std::process::{Command,Stdio};
 use crate::fsm;
 use crate::config;
@@ -51,7 +51,7 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequ
         let key = format!("id_{}", id);
         let cab_requests_bool = elevator.get_cab_requests()
             .map(|s| matches!(s.get_state(), RequestState::Confirmed));
-        // Use serde_json::json! to construct the elevator state object
+        
         let elevator_state = json!({
             "behaviour": elevator.state.behaviour,
             "floor": elevator.state.current_floor,
@@ -59,11 +59,11 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequ
             "cabRequests": cab_requests_bool,
         });
 
-        // Insert the elevator state into the HashMap with the generated key
+       
         states.insert(key, elevator_state);
     }
 
-    // Create hall requests dynamically
+   
     let hall_requests = world_view.get_hall_requests()
         .iter()
         .map(|row| row.iter()
@@ -93,8 +93,11 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequ
     }
 }
 
-// Now you get requests specifically for your own elevator:
-let own_reqs = all_reqs.get(&(own_id as i32))?.clone();
+
+let own_reqs = all_reqs
+    .get(&(own_id as i32))
+    .cloned()
+    .unwrap_or([[false; config::CALL_COUNT]; config::FLOOR_COUNT]);
 Some((own_reqs, active_ids))
 }
 
