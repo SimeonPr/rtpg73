@@ -1,3 +1,11 @@
+//! Elevator Management System
+//!
+//! This module implements the core logic for managing multiple elevators in a distributed system.
+//! It handles:
+//! - Request state tracking and synchronization
+//! - Elevator state management
+//! - Distributed consensus for request handling
+//! - Failure detection and recovery
 use driver_rust::elevio::poll::CallButton;
 use log::error;
 use serde::{Deserialize, Serialize};
@@ -16,6 +24,7 @@ use crossbeam_channel as cbc;
 use driver_rust::elevio;
 use log::{debug, info};
 
+/// Represents the state of an elevator request
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Default, PartialEq)]
 pub enum RequestState {
     #[default] None = 0,
@@ -23,6 +32,8 @@ pub enum RequestState {
     //Barrier
     Confirmed = 2,
 }
+
+/// Represents an individual elevator request with state and acknowledgments
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Request {
     state: RequestState,
@@ -30,16 +41,22 @@ pub struct Request {
 }
 
 impl Request {
+    /// Creates a new request with default state and initial acknowledgment
     pub fn new(id: u8) -> Request {
         let mut hs = HashSet::new();
         hs.insert(id);
         Request { state: RequestState::None, acks: hs }
     }
+
+    /// Updates the request state and resets acknowledgments
     pub fn set_to(&mut self, r: RequestState, id: u8) {
         self.state = r;
         self.acks = HashSet::new();
         self.acks.insert(id);
     }
+
+    /// Merges this request with another request's state
+    /// Returns true if the state changed as a result
     pub fn merge(&mut self, r2: &Request, id: u8) -> bool {
         let mut updated: bool = false;
         let new_state = match self.state {
@@ -73,10 +90,13 @@ impl Request {
         updated
     }
 
+    /// Returns the current request state
     pub fn get_state(&self) -> RequestState {
         self.state
     }
 }
+
+/// Network representation of an elevator's state
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct ElevatorNetworkState {
     pub dirn: fsm::Dirn,
@@ -94,6 +114,7 @@ impl ElevatorNetworkState {
     }
 }
 
+/// Represents an elevator in the system
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Elevator {
     last_received: SystemTime,
@@ -103,6 +124,7 @@ pub struct Elevator {
     detect_if_dead_counter: u8
 }
 impl Elevator {
+    /// Creates a new elevator instance
     pub fn new() -> Elevator {
         let cab_requests = Default::default(); 
         Elevator {
@@ -114,12 +136,13 @@ impl Elevator {
         }
     }
 
+    /// Returns a copy of all cab requests
     pub fn get_cab_requests(&self) -> [Request; config::FLOOR_COUNT] {
         self.cab_requests.clone()
     }
-
-
 }
+
+/// Complete system view containing all elevators and requests
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WorldView {
     pub(crate) id: u8,
@@ -128,7 +151,7 @@ pub struct WorldView {
 }
 
 impl WorldView {
-
+    /// Initializes a new WorldView for an elevator
     pub fn init(id: u8) -> WorldView {
         let mut elevators = HashMap::new();
         elevators.insert(id, Elevator::new());
@@ -144,6 +167,8 @@ impl WorldView {
             hall_requests
         }
     }
+
+    /// Compares this WorldView with another and logs differences
     pub fn compare_world_views(
         &self,
         other_world_view: &WorldView
@@ -215,6 +240,8 @@ impl WorldView {
             }
         }
     }
+
+    /// Handles recovery by adopting a foreign WorldView humbly
     pub fn handle_humbly(
         &self,
         foreign_world_view: WorldView
@@ -230,6 +257,9 @@ impl WorldView {
         }
         wv_clone
     }
+
+    /// Merges a foreign WorldView into this one
+    /// Returns updated WorldView and whether changes were made
     pub fn handle_foreign_world_view(
         &self,
         foreign_world_view: WorldView
@@ -297,6 +327,8 @@ impl WorldView {
         (wv_clone, updated)
     }
 
+    /// Updates request states that have reached consensus
+    /// Returns updated WorldView and whether changes were made
     pub fn update_states_at_barrier(&self) -> (WorldView, bool) {
         let mut wv_clone = self.clone();
         let mut updated = false;
@@ -336,6 +368,8 @@ impl WorldView {
         (wv_clone, updated)
     }
 
+    /// Handles a button press event
+    /// Returns updated WorldView and whether changes were made
     pub fn handle_button_press(&self, button_press: &CallButton) -> (WorldView, bool) {
         let mut wv_clone = self.clone();
         let mut updated = false;
@@ -365,6 +399,8 @@ impl WorldView {
         (wv_clone, updated)
     }
 
+    /// Updates this elevator's state
+    /// Returns updated WorldView and whether changes were made
     pub fn handle_elevator_state(&self, dirn: Dirn, behaviour: ElevatorBehaviour, floor: i8) -> (WorldView, bool) {
         let mut wv_clone = self.clone();
         let elev = wv_clone.elevators.get_mut(&wv_clone.id).expect("key should have been available");
@@ -396,6 +432,8 @@ impl WorldView {
         (wv_clone, true)
     }
 
+    /// Clears specified requests for a floor
+    /// Returns updated WorldView and whether changes were made
     pub fn handle_clear_request(&self, floor: usize, should_clear: &[bool; 3]) -> (WorldView, bool) {
         let mut wv_clone = self.clone();
         let own_elev = wv_clone.elevators.get_mut(&wv_clone.id).expect("key should have been available");
@@ -411,7 +449,8 @@ impl WorldView {
         }
         (wv_clone, true)
     }
-    // Getters
+
+    /// Gets set of elevators considered alive
     pub fn get_alive_elevators(&self, timeout: u64) -> HashSet<u8> {
         let mut alive_elevators = HashSet::new();
         for (id, elev) in self.elevators.iter() {
@@ -421,13 +460,19 @@ impl WorldView {
         }
         alive_elevators
     }
+
+    /// Gets this elevator's ID
     pub fn get_id(&self) -> u8 {
         self.id
     }
+
+    /// Gets all known elevators
     pub fn get_elevators(&self) -> HashMap<u8, Elevator> {
         self.elevators.clone()
     }
 
+    /// Assigns requests to elevators using the cost algorithm
+    /// Returns controller requests and list of active elevator IDs
     pub fn assign_requests(&self) -> (fsm::ControllerRequests, Vec<i32>) {  // <-- Return type adjusted
         // Get Hall Requests and active elevator IDs
         let result: Option<(fsm::ControllerRequests, Vec<i32>)> = cost::elevator_algorithm(&self);  // <-- Adjusted type
@@ -447,6 +492,7 @@ impl WorldView {
         }
     }
 
+    /// Gets all confirmed requests in boolean matrix form
     pub fn get_confirmed_requests(&self) -> [[bool; config::CALL_COUNT]; config::FLOOR_COUNT] {
         let mut requests: [[bool; config::CALL_COUNT]; config::FLOOR_COUNT] = [[false; config::CALL_COUNT]; config::FLOOR_COUNT];
         let elev = self.elevators.get(&self.id).expect("own ID not in elevators");
@@ -472,12 +518,29 @@ impl WorldView {
         requests
     }
 
+    /// Gets all hall requests
     pub fn get_hall_requests(&self) -> [[Request; 2]; config::FLOOR_COUNT] {
         self.hall_requests.clone()
     }
 }
 
-
+/// Main manager loop that coordinates the elevator system
+///
+/// # Parameters
+/// - `id`: This elevator's ID
+/// - `manager_rx`: Channel for receiving manager messages
+/// - `sender_tx`: Channel for sending network messages
+/// - `controller_tx`: Channel for sending controller commands
+/// - `lights_tx`: Channel for sending light updates
+/// - `call_button_rx`: Channel for receiving button presses
+/// - `alarm_rx`: Channel for receiving alarm signals
+///
+/// # Behavior
+/// 1. Maintains the WorldView state
+/// 2. Handles incoming messages and updates state accordingly
+/// 3. Coordinates with other elevators
+/// 4. Detects and handles failures
+/// 5. Runs indefinitely
 pub fn run(
     id: u8,
     manager_rx: cbc::Receiver<messages::Manager>,
@@ -582,7 +645,7 @@ pub fn run(
     }
 }
 
-
+/// Notifies all subsystems about state changes
 fn inform_everybody(
     world_view: &mut WorldView,
     sender_tx: &cbc::Sender<messages::Manager>,
@@ -616,6 +679,7 @@ fn inform_everybody(
 
 
 #[cfg(test)]
+/// Tests for the Request struct
 mod test_request {
     use super::*;
 
@@ -653,6 +717,7 @@ mod test_request {
 }
 
 #[cfg(test)]
+/// Tests for the Elevator struct
 mod test_elevator {
     use super::*;
 
@@ -700,6 +765,7 @@ mod test_elevator {
 }
 
 #[cfg(test)]
+/// Tests for the WorldView struct
 mod test_worldview {
     use super::*;
 
@@ -1132,6 +1198,7 @@ mod test_worldview {
 }
 
 #[cfg(test)]
+/// Tests for the Manager module
 mod test_manager {
     use super::*;
     use std::time::Duration;
@@ -1278,6 +1345,7 @@ mod test_manager {
     }
 }
 
+/// Tests for the Manager module
 mod test_manager_functions {
     use std::thread;
 

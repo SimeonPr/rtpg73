@@ -1,3 +1,12 @@
+//! Elevator controller module that handles communication between hardware components and the manager.
+//!
+//! This module is responsible for:
+//! - Initializing and monitoring elevator hardware states
+//! - Processing incoming controller requests
+//! - Managing the elevator's finite state machine (FSM)
+//! - Handling hardware events (floor sensors, stop buttons, obstructions)
+//! - Coordinating with the manager through message passing
+
 use crossbeam_channel as cbc;
 use driver_rust::elevio;
 use driver_rust::elevio::elev as e;
@@ -9,6 +18,26 @@ use crate::fsm;
 use std::thread::spawn;
 use std::time::Duration;
 
+/// Main controller loop that manages elevator operations.
+///
+/// This function:
+/// 1. Initializes the elevator hardware and state
+/// 2. Spawns monitoring threads for hardware sensors
+/// 3. Enters an infinite event loop to handle:
+///    - Controller requests
+///    - Floor sensor events
+///    - Stop button presses
+///    - Obstruction signals
+///    - Timer events
+///
+/// # Parameters
+/// - `controller_rx`: Channel receiver for controller commands (typically from a central system)
+/// - `manager_tx`: Channel sender for manager notifications (state updates and completions)
+/// - `elevator_connection`: Handle to the physical elevator hardware interface
+///
+/// # Returns
+/// [`std::io::Result`] that will always be `Ok(())` since the loop runs indefinitely.
+/// In practice, this function only returns if there's a critical hardware communication error.
 pub fn run(controller_rx: cbc::Receiver<messages::Controller>, manager_tx: cbc::Sender<messages::Manager>, elevator_connection: e::Elevator) -> std::io::Result<()> {
     info!("Controller up and running.");
     let (timer_tx, timer_rx) = cbc::unbounded::<bool>();

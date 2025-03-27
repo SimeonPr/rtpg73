@@ -1,3 +1,12 @@
+//! Elevator State Machine module
+//!
+//! This module implements the core logic for controlling an elevator's behavior through
+//! a finite state machine (FSM). It handles:
+//! - Elevator movement between floors
+//! - Door opening/closing
+//! - Request management
+//! - Obstruction detection
+//! - Timing for door operations
 use driver_rust::elevio::elev::Elevator;
 use log::{trace, debug};
 use serde::{Serialize, Deserialize};
@@ -8,43 +17,61 @@ use crossbeam_channel::{self as cbc, Sender};
 use crate::{config, messages};
 
 const CALL_COUNT: usize = 3;
+
+/// Represents possible elevator behaviors
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 pub enum ElevatorBehaviour {
+    /// Elevator is idle and waiting for requests
     #[serde(rename = "idle")]
     Idle,
+    /// Elevator doors are currently open
     #[serde(rename = "doorOpen")]
     DoorOpen,
+    /// Elevator is moving between floors
     #[serde(rename = "moving")]
     Moving
 }
+
+/// Represents possible elevator directions
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Dirn {
+    /// Moving downward
     #[serde(rename = "down")]
     Down = -1,
+    /// Stopped (not moving)
     #[serde(rename = "stop")]
     Stop = 0,
+    /// Moving upward
     #[serde(rename = "up")]
     Up = 1
 }
+
+/// Represents elevator button types
 #[derive(Debug)]
 pub enum Button {
-    HallUp,
-    HallDown,
-    Cab
+    HallUp,    // Hall call up button
+    HallDown,  // Hall call down button
+    Cab        // Cab (internal) button
 }
+
+/// Type alias for elevator requests matrix (floors × button types)
 pub type ControllerRequests = [[bool;CALL_COUNT]; config::FLOOR_COUNT];
+
+/// Main elevator state structure
 #[derive(Debug)]
 pub struct ElevatorState {
-    timer_tx: cbc::Sender<bool>,
-    no_of_timer_threads: u8,
-    floor: i8,
-    dirn: Dirn,
-    requests: ControllerRequests,
-    behaviour: ElevatorBehaviour,
-    door_open_duration: u64,
-    connection: Elevator,
-    obstruction: bool
+    timer_tx: cbc::Sender<bool>,      // Channel for timer notifications
+    no_of_timer_threads: u8,          // Active timer threads count
+    floor: i8,                        // Current floor (-1 if between floors)
+    dirn: Dirn,                       // Current direction
+    requests: ControllerRequests,      // Current request matrix
+    behaviour: ElevatorBehaviour,      // Current behavior state
+    door_open_duration: u64,          // Duration doors stay open (seconds)
+    connection: Elevator,              // Hardware interface
+    obstruction: bool                  // Obstruction sensor state
 }
+
+/// Internal helper structure for direction/behavior pairs
 #[derive(Debug)]
 struct DirectionBehaviourPair {
     dirn: Dirn,
@@ -52,7 +79,14 @@ struct DirectionBehaviourPair {
 }
 
 impl ElevatorState {
-    
+    /// Initializes a new elevator state
+    ///
+    /// # Parameters
+    /// - `elevator_connection`: Hardware interface
+    /// - `timer_tx`: Timer notification channel
+    ///
+    /// # Returns
+    /// New ElevatorState with default values
     pub fn init_elevator(elevator_connection: Elevator, timer_tx: cbc::Sender<bool>) -> ElevatorState {
         trace!("init_elevator");
         ElevatorState {
@@ -68,6 +102,11 @@ impl ElevatorState {
         }
     }
     
+    /// Handles new request assignments
+    ///
+    /// # Parameters
+    /// - `requests`: New request matrix
+    /// - `manager_tx`: Channel for sending state updates
     pub fn fsm_on_new_requests(&mut self, requests: ControllerRequests, manager_tx: &Sender<messages::Manager>) {
         self.requests = requests;
         match self.behaviour {
@@ -91,6 +130,7 @@ impl ElevatorState {
         }
     }
     
+    /// Handles initialization between floors
     pub fn fsm_on_init_between_floors(&mut self) {
         trace!("fsm_on_init_between_floors");
         //motor direction
@@ -99,6 +139,10 @@ impl ElevatorState {
         self.behaviour = ElevatorBehaviour::Moving;
     }
     
+    /// Handles door timeout events
+    ///
+    /// # Parameters
+    /// - `manager_tx`: Channel for sending state updates
     pub fn fsm_on_door_time_out(&mut self, manager_tx: &Sender<messages::Manager>) {
         trace!("fsm_on_door_time_out");
         self.no_of_timer_threads -= 1;
@@ -129,11 +173,20 @@ impl ElevatorState {
         }
     }
     
+    /// Updates obstruction sensor state
+    ///
+    /// # Parameters
+    /// - `val`: New obstruction state
     pub fn fsm_on_obstruction(&mut self, val: bool) {
         trace!("fsm_on_obstruction");
         self.obstruction = val;
     }
     
+    /// Handles floor arrival events
+    ///
+    /// # Parameters
+    /// - `floor`: New floor number
+    /// - `manager_tx`: Channel for sending state updates
     pub fn fsm_on_floor_arrival(&mut self, floor: i8, manager_tx: &Sender<messages::Manager>) {
         trace!("fsm_on_floor_arrival");
         //stop timer? 
@@ -157,8 +210,10 @@ impl ElevatorState {
         manager_tx.send(messages::Manager::ElevatorState(self.dirn, self.behaviour, self.floor)).expect("couldn't send to manager");
     }
 
+    /// Handles stop button press events
     pub fn fsm_on_stop_button_press(&mut self){}
 
+    // Private helper methods
     fn start_time_out_thread(&mut self) {
         trace!("sleep");
         self.no_of_timer_threads += 1;
@@ -305,6 +360,7 @@ impl ElevatorState {
 
 #[cfg(test)]
 
+/// Test the initialization of the elevator state
 mod test_init_elevator {
     use super::*;
 
@@ -338,6 +394,7 @@ mod test_init_elevator {
 
 }
 
+/// Test the function that chooses the elevator's direction and behavior based on requests
 mod fsm_on_new_requests {
     use config::FLOOR_COUNT;
 
@@ -412,6 +469,7 @@ mod fsm_on_new_requests {
 }
 
 
+/// Test the function that handles door timeout events
 mod fsm_on_init_between_floors {
     use super::*;
     use crossbeam_channel;
@@ -455,8 +513,7 @@ mod fsm_on_init_between_floors {
     }
 }
 
-
-
+/// Test the function that handles door timeout events
 mod tests_fsm {
     use super::*;
 

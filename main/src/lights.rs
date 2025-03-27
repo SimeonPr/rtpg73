@@ -1,3 +1,7 @@
+//! Elevator Lights Controller module
+//!
+//! Handles the synchronization between elevator request states and physical light indicators.
+//! Listens for request updates and updates the elevator's button lights accordingly.
 use crossbeam_channel as cbc;
 use log::debug;
 use log::trace;
@@ -6,6 +10,13 @@ use crate::fsm;
 use driver_rust::elevio::elev as e;
 use crate::config;
 
+/// Main lights controller loop
+///
+/// Continuously monitors for light update requests and applies them to the elevator hardware.
+///
+/// # Parameters
+/// - `lights_rx`: Channel receiver for light control messages
+/// - `elev_conn`: Handle to the physical elevator hardware interface
 pub fn run(lights_rx: cbc::Receiver<messages::Controller>, elev_conn: e::Elevator) {
     loop {
         cbc::select! {
@@ -21,6 +32,15 @@ pub fn run(lights_rx: cbc::Receiver<messages::Controller>, elev_conn: e::Elevato
     }
 }
 
+/// Updates all elevator button lights according to current requests
+///
+/// # Parameters
+/// - `elev_conn`: Elevator hardware interface
+/// - `requests`: 2D array representing light states (floors × button types)
+///
+/// # Notes
+/// - Iterates through all floors and button types
+/// - Sets each light according to the corresponding request state
 fn set_all_lights(elev_conn: &e::Elevator, requests: &fsm::ControllerRequests) {
     trace!("set_all_lights");
     for f in 0..config::FLOOR_COUNT {

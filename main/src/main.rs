@@ -1,3 +1,11 @@
+//! Elevator System Main Module
+//!
+//! This is the root module that orchestrates the entire elevator control system.
+//! It handles:
+//! - System initialization and configuration
+//! - Inter-module communication setup
+//! - Thread management for all subsystems
+//! - Emergency handling and panic management
 use core::time::Duration;
 use std::thread::spawn;
 use std::{process, panic};
@@ -18,6 +26,17 @@ mod fsm;
 mod config;
 use std::env;
 
+/// Extracts elevator ID from command line arguments
+///
+/// # Parameters
+/// - `args`: Vector of command line arguments
+///
+/// # Returns
+/// - Parsed ID if valid (u8)
+/// - Defaults to 0 if:
+///   - No ID specified
+///   - Invalid format
+///   - Missing value after --id flag
 fn get_id_from_args(args: Vec<String>) -> u8 {
     let mut id: Option<u8> = None;
     let mut iter = args.iter();
@@ -33,6 +52,30 @@ fn get_id_from_args(args: Vec<String>) -> u8 {
     id.unwrap_or(0)
 }
 
+/// Main entry point for the elevator control system
+///
+/// # System Architecture
+/// 1. Initializes panic handler to abort on any thread panic
+/// 2. Parses command line arguments for elevator ID
+/// 3. Sets up logging system
+/// 4. Creates communication channels between modules
+/// 5. Initializes hardware connection
+/// 6. Spawns all subsystem threads:
+///    - Manager (brain of the system)
+///    - Lights controller
+///    - Elevator controller (FSM)
+///    - Network sender
+///    - Network receiver
+///    - Button poller
+///    - Watchdog alarm
+/// 7. Waits for all threads to complete (theoretically runs indefinitely)
+///
+/// # Panics
+/// - If hardware connection fails
+/// - If any channel communication fails
+///
+/// # Environment Variables
+/// - `ELEVATOR_PORT`: Overrides default hardware port (15657)
 fn main() {
 
     // crash on any thread panic
@@ -115,20 +158,24 @@ fn main() {
 
 #[cfg(test)]
 mod test_main {
+    //! Tests for main system functionality
     use super::*;
-
+    
+    /// Tests valid ID extraction
     #[test]
     fn get_id_from_args_test() {
         let args = vec!["--id".to_string(), "1".to_string()];
         assert_eq!(get_id_from_args(args), 1);
     }
-
+    
+    /// Tests missing ID value handling
     #[test]
     fn get_id_from_args_test_panic() {
         let args = vec!["--id".to_string()];
         assert_eq!(get_id_from_args(args), 0);
     }
-
+    
+    /// Tests invalid ID format handling
     #[test]
     fn get_id_from_args_test_panic2() {
         let args = vec!["--id".to_string(), "a".to_string()];

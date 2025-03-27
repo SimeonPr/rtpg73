@@ -1,3 +1,7 @@
+//! Network Sender Module
+//!
+//! Handles outgoing broadcast communications for the elevator control system.
+//! Listens for manager messages and broadcasts them to the network.
 use core::net::SocketAddr;
 use std::net::UdpSocket;
 
@@ -7,6 +11,27 @@ use log::{debug, info, error};
 use crate::messages;
 use bincode;
 
+/// Main sender loop that broadcasts manager messages via UDP
+///
+/// # Parameters
+/// - `rx`: Channel receiver for messages from the manager
+///
+/// # Behavior
+/// 1. Binds to a random available UDP port
+/// 2. Configures socket for broadcast (255.255.255.255:4567)
+/// 3. Continuously listens for messages from manager
+/// 4. Serializes and broadcasts valid messages
+/// 5. Logs and skips network errors
+///
+/// # Network Configuration
+/// - Uses UDP broadcast on port 4567
+/// - Binds to any available local port (0.0.0.0:0)
+/// - Requires broadcast capability
+///
+/// # Error Handling
+/// - Continues operation after network errors
+/// - Logs errors for failed broadcasts
+/// - Panics only on initial setup failures (bind, broadcast enable)
 pub fn run(rx: cbc::Receiver<messages::Manager>) {
     debug!("Sender up and running...");
     let addr: SocketAddr = "0.0.0.0:0".parse().expect("address should be parseable");

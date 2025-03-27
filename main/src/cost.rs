@@ -1,3 +1,16 @@
+//! Module for handling elevator request assignment using an external Hall Request Assigner (HRA) algorithm.
+//!
+//! This module provides functionality to:
+//! - Convert elevator states and requests into a format suitable for the HRA
+//! - Execute the external HRA executable
+//! - Parse the HRA output into controller requests
+//! - Identify elevators with assigned calls
+
+/// Input structure for the Hall Request Assigner (HRA) algorithm.
+///
+/// Contains:
+/// - `hall_requests`: 2D vector representing hall call buttons (up/down per floor)
+/// - `states`: HashMap of elevator states with their current behavior, floor, and requests
 use serde_json;
 use std::collections::HashMap;
 use serde_json::{Value, json};
@@ -14,6 +27,19 @@ struct HRAInput {
     pub states: HashMap<String, Value>
 }
 
+/// Executes the external HRA executable with provided JSON input.
+///
+/// # Parameters
+/// - `executable`: Path to the HRA executable
+/// - `input_json`: JSON string containing the input data
+///
+/// # Returns
+/// - `Some(Vec<u8>)`: Output from the executable if successful
+/// - `None`: If execution fails or executable returns non-zero status
+///
+/// # Notes
+/// - The executable is called with `--input` flag followed by the JSON string
+/// - Both stdout and stderr are captured
 fn run_hra_executable(executable: &str, input_json: &str) -> Option<Vec<u8>> {
     let child = Command::new(executable)
         .arg("--input")
@@ -34,7 +60,24 @@ fn run_hra_executable(executable: &str, input_json: &str) -> Option<Vec<u8>> {
     Some(output.stdout)
 }
 
-
+/// Main elevator algorithm that coordinates request assignment.
+///
+/// # Parameters
+/// - `world_view`: Current state of the elevator system including:
+///   - Elevator states
+///   - Hall requests
+///   - Cab requests
+///
+/// # Returns
+/// - `Some((ControllerRequests, Vec<i32>))`: Tuple containing:
+///   - Assigned controller requests (2D array of bools per floor/direction)
+///   - List of elevator IDs with assigned calls
+/// - `None`: If any step fails (JSON conversion, executable execution, etc.)
+///
+/// # Workflow
+/// 1. Collects elevator states and requests into HRAInput format
+/// 2. Converts to JSON and passes to HRA executable
+/// 3. Parses HRA output into controller requests
 pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequests, Vec<i32>)>{
     let mut states = HashMap::new();
     let alive_elevators = world_view.get_alive_elevators(2);
@@ -79,6 +122,20 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequ
     covert_json_to_controller_reqs(&output_json, own_id).ok()
 }
 
+/// Converts HRA output JSON into controller requests format.
+///
+/// # Parameters
+/// - `output_json`: JSON string from HRA executable
+/// - `id`: ID of the current elevator to extract requests for
+///
+/// # Returns
+/// - `Ok((ControllerRequests, Vec<i32>))`: Parsed requests and active elevators
+/// - `Err(serde_json::Error)`: If JSON parsing fails
+///
+/// # Errors
+/// - If JSON structure is invalid
+/// - If specified ID is not found in output
+/// - If any value conversion fails
 pub fn covert_json_to_controller_reqs(
     output_json: &str,
     id: u8,
@@ -114,6 +171,18 @@ pub fn covert_json_to_controller_reqs(
     Ok((controller_requests, active_elevators))
 }
 
+/// Extracts elevator IDs that have assigned calls from HRA output.
+///
+/// # Parameters
+/// - `parsed_json`: Parsed JSON Value from HRA output
+///
+/// # Returns
+/// - `Some(Vec<i32>)`: List of elevator IDs with assigned calls
+/// - `None`: If JSON structure is invalid
+///
+/// # Notes
+/// - Only considers objects with keys starting with "id_"
+/// - An elevator is included if any of its assigned calls is true
 fn ids_with_assigned_calls(parsed_json: &Value) -> Option<Vec<i32>> {
     Some(
         parsed_json.as_object()?
@@ -145,8 +214,9 @@ fn ids_with_assigned_calls(parsed_json: &Value) -> Option<Vec<i32>> {
     )
 }
 
-
 #[cfg(test)]
+
+/// Test module for HRA executable execution
 mod test_run_hra_executable {
     use super::*;
 
@@ -231,7 +301,7 @@ mod test_run_hra_executable {
     }
 }
 
-
+/// Test module for elevator algorithm
 mod test_elevator_algorithm {
     use super::*;
 
@@ -322,6 +392,7 @@ mod test_elevator_algorithm {
     }
 }
 
+/// Test module for JSON to controller requests conversion
 mod test_conver_json_to_controller_reqs {
     use super::*;
 
@@ -388,6 +459,7 @@ mod test_conver_json_to_controller_reqs {
     }
 }
 
+/// Test module for ID extraction from HRA output
 mod test_ids_with_assigned_calls {
     use super::*;
 
