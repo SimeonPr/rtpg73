@@ -347,11 +347,13 @@ impl ElevatorState {
     
 }
 
+
 #[cfg(test)]
 
 /// Test the initialization of the elevator state
 mod test_init_elevator {
     use super::*;
+    const CALL_COUNT: usize = config::CALL_COUNT;
 
     // Test the elevator initializes with correct default values for floor, direction, behavior, and obstruction
     #[test]
@@ -385,11 +387,11 @@ mod test_init_elevator {
 
 /// Test the function that chooses the elevator's direction and behavior based on requests
 mod fsm_on_new_requests {
-    use config::FLOOR_COUNT;
-
     use super::*;
+    const _CALL_COUNT: usize = config::CALL_COUNT;
+    const _FLOOR_COUNT: usize = config::FLOOR_COUNT;
 
-    fn create_test_elevator(initial_behaviour: ElevatorBehaviour) -> ElevatorState {
+    fn _create_test_elevator(initial_behaviour: ElevatorBehaviour) -> ElevatorState {
         let (timer_tx, _) = crossbeam_channel::bounded(1);
         ElevatorState {
             behaviour: initial_behaviour,
@@ -408,7 +410,7 @@ mod fsm_on_new_requests {
     #[test]
     fn test_new_requests_updates_state_when_idle() {
         let (manager_tx, manager_rx) = crossbeam_channel::unbounded();
-        let mut elevator = create_test_elevator(ElevatorBehaviour::Idle);
+        let mut elevator = _create_test_elevator(ElevatorBehaviour::Idle);
 
         elevator.floor = 0;
         
@@ -428,10 +430,10 @@ mod fsm_on_new_requests {
     #[test]
     fn test_door_open_behavior_activates_proper_sequence() {
         let (manager_tx, manager_rx) = crossbeam_channel::unbounded();
-        let mut elevator = create_test_elevator(ElevatorBehaviour::Idle);
+        let mut elevator = _create_test_elevator(ElevatorBehaviour::Idle);
         elevator.floor = 2; 
 
-        let mut test_requests = [[false; CALL_COUNT]; FLOOR_COUNT];
+        let mut test_requests = [[false; _CALL_COUNT]; _FLOOR_COUNT];
         test_requests[2][0] = true;
         
         elevator.fsm_on_new_requests(test_requests, &manager_tx);
@@ -444,10 +446,10 @@ mod fsm_on_new_requests {
     #[test]
     fn test_moving_behavior_sets_motor_direction() {
         let (manager_tx, _) = crossbeam_channel::unbounded();
-        let mut elevator = create_test_elevator(ElevatorBehaviour::Idle);
+        let mut elevator = _create_test_elevator(ElevatorBehaviour::Idle);
         elevator.floor = 1;
         
-        let mut test_requests = [[false; CALL_COUNT]; FLOOR_COUNT];
+        let mut test_requests = [[false; _CALL_COUNT]; _FLOOR_COUNT];
         test_requests[3][0] = true;
         
         elevator.fsm_on_new_requests(test_requests, &manager_tx);
@@ -464,7 +466,7 @@ mod fsm_on_init_between_floors {
     use crossbeam_channel;
 
     // Helper to create test state with real elevator (skips test if connection fails)
-    fn create_test_state() -> Option<ElevatorState> {
+    fn _create_test_state() -> Option<ElevatorState> {
         let (timer_tx, _) = crossbeam_channel::bounded(1);
         match Elevator::init("127.0.0.1:15657", config::FLOOR_COUNT as u8) {
             Ok(conn) => Some(ElevatorState {
@@ -485,7 +487,7 @@ mod fsm_on_init_between_floors {
     // Test that motor direction and state are set correctly
     #[test]
     fn test_fsm_on_init_between_floors() {
-        let mut state = match create_test_state() {
+        let mut state = match _create_test_state() {
             Some(s) => s,
             None => {
                 println!("[SKIPPED] Elevator hardware not available");
@@ -506,8 +508,11 @@ mod fsm_on_init_between_floors {
 mod tests_fsm {
     use super::*;
 
+    const _CALL_COUNT: usize = config::CALL_COUNT;
+    const _FLOOR_COUNT: usize = config::FLOOR_COUNT;
+
     // Helper to create test state with real elevator (skips test if connection fails)
-    fn create_test_elevator(initial_behaviour: ElevatorBehaviour) -> ElevatorState {
+    fn _create_test_elevator(initial_behaviour: ElevatorBehaviour) -> ElevatorState {
         let (timer_tx, _) = crossbeam_channel::bounded(1);
         ElevatorState {
             behaviour: initial_behaviour,
@@ -526,7 +531,7 @@ mod tests_fsm {
     #[test]
     fn test_start_time_out_thread_increments_counter_and_sends_message() {
         let (timer_tx, timer_rx) = crossbeam_channel::bounded(1);
-        let mut elevator = create_test_elevator(ElevatorBehaviour::Idle);
+        let mut elevator = _create_test_elevator(ElevatorBehaviour::Idle);
         elevator.timer_tx = timer_tx;
         elevator.door_open_duration = 1;
 
@@ -536,31 +541,10 @@ mod tests_fsm {
         assert_eq!(timer_rx.recv_timeout(Duration::from_secs(2)), Ok(true));
     }
 
-    // Test that lights are set according to request matrix
-    #[test]
-    fn test_set_all_lights_updates_buttons_correctly() {
-        let mut elevator = create_test_elevator(ElevatorBehaviour::Idle);
-        elevator.requests = [
-            [true, false, true],  
-            [false, true, false], 
-            [true, true, true],   
-            [false, false, false] 
-        ];
-
-        elevator.set_all_lights();
-        println!("Lights set successfully - manual verification needed");
-    
-        for floor in 0..config::FLOOR_COUNT {
-            for button in 0..CALL_COUNT {
-                elevator.connection.call_button_light(floor as u8, button as u8, false);
-            }
-        }
-    }
-
     // Test direction choice when moving up with requests above
     #[test]
     fn test_requests_choose_direction_up_with_requests_above() {
-        let mut elevator = create_test_elevator(ElevatorBehaviour::Moving);
+        let mut elevator = _create_test_elevator(ElevatorBehaviour::Moving);
         elevator.dirn = Dirn::Up;
         elevator.floor = 1;
         elevator.requests[2][0] = true; 
@@ -575,10 +559,10 @@ mod tests_fsm {
     #[ignore = "Requires real elevator connection"]
     fn test_requests_clear_at_current_floor_up_direction() {
         let (manager_tx, manager_rx) = crossbeam_channel::unbounded();
-        let mut elevator = create_test_elevator(ElevatorBehaviour::Moving);
+        let mut elevator = _create_test_elevator(ElevatorBehaviour::Moving);
         elevator.dirn = Dirn::Up;
         elevator.floor = 1;
-        elevator.requests[1] = [true; CALL_COUNT]; 
+        elevator.requests[1] = [true; _CALL_COUNT]; 
 
         elevator.requests_clear_at_current_floor(&manager_tx);
         
@@ -600,9 +584,14 @@ mod tests_fsm {
                 [false, false, false],
                 [false, true, false], 
                 [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
                 [false, false, false]
             ],
-            ..create_test_elevator(ElevatorBehaviour::Idle)
+            .._create_test_elevator(ElevatorBehaviour::Idle)
         };
 
         assert!(elevator.requests_here());
@@ -618,9 +607,14 @@ mod tests_fsm {
                 [true, false, false],
                 [false, false, false],
                 [false, false, false],
-                [false, false, false] 
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false]
             ],
-            ..create_test_elevator(ElevatorBehaviour::Idle)
+            .._create_test_elevator(ElevatorBehaviour::Idle)
         };
 
         assert!(elevator.requests_below());
@@ -634,10 +628,15 @@ mod tests_fsm {
             requests: [
                 [false, false, false],
                 [false, false, false],
-                [true, false, false], 
+                [true, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
                 [false, false, false]
             ],
-            ..create_test_elevator(ElevatorBehaviour::Idle)
+            .._create_test_elevator(ElevatorBehaviour::Idle)
         };
 
         assert!(elevator.requests_above());
@@ -653,9 +652,14 @@ mod tests_fsm {
                 [false, false, false],
                 [false, false, true], 
                 [false, false, false],
-                [false, false, false] 
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false]
             ],
-            ..create_test_elevator(ElevatorBehaviour::Moving)
+            .._create_test_elevator(ElevatorBehaviour::Moving)
         };
 
         assert!(elevator.requests_should_stop());

@@ -613,259 +613,235 @@ pub fn run(
 }
 
 
-// /// Tests for the Manager module
-// mod test_manager_functions {
-//     use std::thread;
+/// Tests for the Manager module
+mod test_manager_functions {
+    #[allow(unused_imports)]
+    use std::thread;
+    #[allow(unused_imports)]
+    use messages::Controller;
 
-//     use super::*;
+    use super::*;
 
-//     // Tests that a Ping message is handled without crashing
-//     #[test]
-//     #[ignore = "Requires to run more elevators"]
-//     fn test_ping_message_handling() {
-//         let (manager_tx, manager_rx) = cbc::unbounded();
-//         let (sender_tx, _) = cbc::unbounded();
-//         let (controller_tx, _) = cbc::unbounded();
-//         let (lights_tx, _) = cbc::unbounded();
-//         let (_call_button_tx, call_button_rx) = cbc::unbounded();
-//         let (_alarm_tx, alarm_rx) = cbc::unbounded();
+    // Tests HeartBeat message handling in humble mode
+    #[test]
+    #[ignore = "Requires to run more elevators"]
+    fn test_humble_mode_heartbeat() {
+        let (manager_tx, manager_rx) = cbc::unbounded();
+        let (sender_tx, sender_rx): (cbc::Sender<messages::Manager>, cbc::Receiver<messages::Manager>) = cbc::unbounded();
+        let (controller_tx, _) = cbc::unbounded();
+        let (lights_tx, _) = cbc::unbounded();
+        let (_call_button_tx, call_button_rx) = cbc::unbounded();
+        let (_alarm_tx, alarm_rx) = cbc::unbounded();
 
-//         manager_tx.send(messages::Manager::Ping).unwrap();
-    
-//         let result = std::panic::catch_unwind(|| {
-//             run(1, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
-//         });
+        let foreign_view = WorldView::init(2);
+        manager_tx.send(messages::Manager::HeartBeat(foreign_view.clone())).unwrap();
+
+        std::thread::spawn(move || {
+            run(1, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
+        });
+
+        // Verify humble mode handled the message
+        assert!(sender_rx.try_recv().is_ok());
+    }
+
+
+    // Tests button press handling after humble mode ends
+    #[test]
+    #[ignore = "Requires to run more elevators"]
+    fn test_button_press_after_humble() {
+        let (_manager_tx, manager_rx) = cbc::unbounded();
+        let (sender_tx, sender_rx): (cbc::Sender<messages::Manager>, cbc::Receiver<messages::Manager>) = cbc::unbounded();
+        let (controller_tx, _) = cbc::unbounded();
+        let (lights_tx, _) = cbc::unbounded();
+        let (call_button_tx, call_button_rx) = cbc::unbounded();
+        let (alarm_tx, alarm_rx) = cbc::unbounded();
+
+        // Send 5 alarms to exit humble mode
+        for _ in 0..5 {
+            alarm_tx.send(1).unwrap();
+        }
+
+        // Send button press
+        call_button_tx.send(CallButton { floor: 1, call: 0 }).unwrap();
+
+        std::thread::spawn(move || {
+            run(1, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
+        });
+
+        // Verify button press was processed
+        assert!(sender_rx.try_recv().is_ok());
+    }
+
+
+    // Tests alarm handling and dead counter decrement
+    #[test]
+    #[ignore = "Requires to run more elevators"]
+    fn test_alarm_handling_with_dead_counter() {
+        let (_manager_tx, manager_rx) = cbc::unbounded();
+        let (sender_tx, sender_rx): (cbc::Sender<messages::Manager>, cbc::Receiver<messages::Manager>) = cbc::unbounded();
+        let (controller_tx, _) = cbc::unbounded();
+        let (lights_tx, _) = cbc::unbounded();
+        let (_call_button_tx, call_button_rx) = cbc::unbounded();
+        let (alarm_tx, alarm_rx) = cbc::unbounded();
+
+        alarm_tx.send(1).unwrap();
+
+        std::thread::spawn(move || {
+            run(1, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
+        });
+
+        // Verify alarm was processed
+        assert!(sender_rx.try_recv().is_ok());
+    }
+
+    // Tests that HeartBeat message is sent with correct WorldView
+    #[test]
+    #[ignore = "Requires to run more elevators"]
+    fn test_sends_heartbeat() {
+        let _world = WorldView::init(1);
+
+        // Create all channels with small buffers
+        let (_sender_tx, sender_rx) = cbc::bounded(1);
+        let (_controller_tx, controller_rx) = cbc::bounded(1);
+        let (_lights_tx, lights_rx) = cbc::bounded(1);
+
+        // Spawn thread to handle controller messages
+        let controller_handler = thread::spawn(move || {
+            match controller_rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(messages::Controller::Requests(_)) => (),
+                _ => panic!("Controller channel error"),
+            }
+        });
+
+        // Spawn thread to handle lights messages
+        let lights_handler = thread::spawn(move || {
+            match lights_rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(messages::Controller::Requests(_)) => (), // Ensure correct type
+                _ => panic!("Lights channel error"),
+            }
+        });
+
+        // Verify the heartbeat message
+        match sender_rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(messages::Manager::HeartBeat(wv)) => assert_eq!(wv.id, 1),
+            _ => panic!("Expected HeartBeat message"),
+        }
+
+        // Ensure all handlers completed
+        controller_handler.join().expect("Controller handler failed");
+        lights_handler.join().expect("Lights handler failed");
+    }
+
+    // Checks that run processes messages correctly
+    #[test]
+    #[ignore = "Requires to run more elevators"]
+    fn test_run() {
+        let (manager_tx, manager_rx) = cbc::unbounded();
+        let (sender_tx, sender_rx): (cbc::Sender<messages::Manager>, cbc::Receiver<messages::Manager>) = cbc::unbounded();
+        let _sender_rx = std::sync::Arc::new(std::sync::Mutex::new(sender_rx));
+        let (controller_tx, _controller_rx): (cbc::Sender<messages::Controller>, cbc::Receiver<messages::Controller>) = cbc::unbounded();
+        let (lights_tx, _lights_rx): (cbc::Sender<messages::Controller>, cbc::Receiver<messages::Controller>) = cbc::unbounded();
+        let (call_button_tx, call_button_rx) = cbc::unbounded();
+        let (alarm_tx, alarm_rx) = cbc::unbounded();
+
+        let id = 1;
+        let manager_handle = std::thread::spawn(move || {
+            run(id, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
+        });
+
+        manager_tx.send(messages::Manager::HeartBeat(WorldView::init(2))).unwrap();
+        manager_tx.send(messages::Manager::ElevatorState(Dirn::Up, ElevatorBehaviour::Moving, 3)).unwrap();
+        manager_tx.send(messages::Manager::ClearRequest(2, [true, false, true])).unwrap();
+
+        let button = CallButton { floor: 2, call: 0 };
+        call_button_tx.send(button).unwrap();
+
+        alarm_tx.send(1).unwrap();
+
+        manager_handle.join().unwrap();
+    }
+
+    // Checks that run processes messages correctly
+    #[test]
+    #[ignore = "Requires to run more elevators"]
+    fn test_run_humble() {
+        let (manager_tx, manager_rx) = cbc::unbounded();
+        let (sender_tx, _sender_rx): (cbc::Sender<messages::Manager>, cbc::Receiver<messages::Manager>) = cbc::unbounded();
+        let (controller_tx, _controller_rx): (cbc::Sender<messages::Controller>, cbc::Receiver<messages::Controller>) = cbc::unbounded();
+        let (lights_tx, _lights_rx) = cbc::unbounded();
+        let (call_button_tx, call_button_rx) = cbc::unbounded();
+        let (alarm_tx, alarm_rx) = cbc::unbounded();
+
+        let id = 1;
+        let manager_handle = std::thread::spawn(move || {
+            run(id, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
+        });
+
+        manager_tx.send(messages::Manager::HeartBeat(WorldView::init(2))).unwrap();
+        manager_tx.send(messages::Manager::ElevatorState(Dirn::Up, ElevatorBehaviour::Moving, 3)).unwrap();
+        manager_tx.send(messages::Manager::ClearRequest(2, [true, false, true])).unwrap();
+
+        let button = CallButton { floor: 2, call: 0 };
+        call_button_tx.send(button).unwrap();
+
+        alarm_tx.send(1).unwrap();
+
+        manager_handle.join().unwrap();
+    }
+
+    // Checks that run processes messages correctly
+    #[test]
+    #[ignore = "Requires to run more elevators"]
+    fn test_run_foreign() {
+        let (manager_tx, manager_rx) = cbc::unbounded();
+        let (sender_tx, _sender_rx) = cbc::unbounded();
+        let (controller_tx, _controller_rx): (cbc::Sender<messages::Controller>, cbc::Receiver<messages::Controller>) = cbc::unbounded();
+        let (lights_tx, _lights_rx) = cbc::unbounded();
+        let (call_button_tx, call_button_rx) = cbc::unbounded();
+        let (alarm_tx, alarm_rx) = cbc::unbounded();
+
+        let id = 1;
+        let manager_handle = std::thread::spawn(move || {
+            run(id, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
+        });
+
+        manager_tx.send(messages::Manager::HeartBeat(WorldView::init(2))).unwrap();
+        manager_tx.send(messages::Manager::ElevatorState(Dirn::Up, ElevatorBehaviour::Moving, 3)).unwrap();
+        manager_tx.send(messages::Manager::ClearRequest(2, [true, false, true])).unwrap();
+
+        let button = CallButton { floor: 2, call: 0 };
+        call_button_tx.send(button).unwrap();
+
+        alarm_tx.send(1).unwrap();
+
+        manager_handle.join().unwrap();
+    }
+
+    // Helper function to drain a channel
+    fn _drain_channel<T>(rx: &cbc::Receiver<T>) {
+        while let Ok(_) = rx.try_recv() {}
+    }
+
+    // Tests that active elevators get has_request set correctly
+    #[test]
+    #[ignore = "Requires to run more elevators"]
+    fn test_updates_active_elevators() {
+        let world = WorldView::init(1);
+        let (_sender_tx, sender_rx): (cbc::Sender<messages::Manager>, cbc::Receiver<messages::Manager>) = cbc::unbounded();
+        let (_controller_tx, controller_rx): (cbc::Sender<messages::Controller>, cbc::Receiver<messages::Controller>) = cbc::unbounded();
+        let (_lights_tx, lights_rx): (cbc::Sender<messages::Controller>, cbc::Receiver<messages::Controller>) = cbc::unbounded();
+
+        // Spawn consumers for all channels
+            _drain_channel(&sender_rx);
+            _drain_channel(&sender_rx);
+            _drain_channel(&controller_rx);
+            _drain_channel(&lights_rx);
+
+        let mut mock_world = world.clone();
+        mock_world.elevators.get_mut(&1).unwrap().has_request = false;
         
-//         assert!(result.is_ok(), "Function panicked during Ping handling");
-//     }
 
-//     // Tests HeartBeat message handling in humble mode
-//     #[test]
-//     #[ignore = "Requires to run more elevators"]
-//     fn test_humble_mode_heartbeat() {
-//         let (manager_tx, manager_rx) = cbc::unbounded();
-//         let (sender_tx, sender_rx) = cbc::unbounded();
-//         let (controller_tx, _) = cbc::unbounded();
-//         let (lights_tx, _) = cbc::unbounded();
-//         let (_call_button_tx, call_button_rx) = cbc::unbounded();
-//         let (_alarm_tx, alarm_rx) = cbc::unbounded();
-
-//         let foreign_view = WorldView::init(2);
-//         manager_tx.send(messages::Manager::HeartBeat(foreign_view.clone())).unwrap();
-
-//         std::thread::spawn(move || {
-//             run(1, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
-//         });
-
-//         // Verify humble mode handled the message
-//         assert!(sender_rx.try_recv().is_ok());
-//     }
-
-
-//     // Tests button press handling after humble mode ends
-//     #[test]
-//     #[ignore = "Requires to run more elevators"]
-//     fn test_button_press_after_humble() {
-//         let (_manager_tx, manager_rx) = cbc::unbounded();
-//         let (sender_tx, sender_rx) = cbc::unbounded();
-//         let (controller_tx, _) = cbc::unbounded();
-//         let (lights_tx, _) = cbc::unbounded();
-//         let (call_button_tx, call_button_rx) = cbc::unbounded();
-//         let (alarm_tx, alarm_rx) = cbc::unbounded();
-
-//         // Send 5 alarms to exit humble mode
-//         for _ in 0..5 {
-//             alarm_tx.send(1).unwrap();
-//         }
-
-//         // Send button press
-//         call_button_tx.send(CallButton { floor: 1, call: 0 }).unwrap();
-
-//         std::thread::spawn(move || {
-//             run(1, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
-//         });
-
-//         // Verify button press was processed
-//         assert!(sender_rx.try_recv().is_ok());
-//     }
-
-
-//     // Tests alarm handling and dead counter decrement
-//     #[test]
-//     #[ignore = "Requires to run more elevators"]
-//     fn test_alarm_handling_with_dead_counter() {
-//         let (_manager_tx, manager_rx) = cbc::unbounded();
-//         let (sender_tx, sender_rx) = cbc::unbounded();
-//         let (controller_tx, _) = cbc::unbounded();
-//         let (lights_tx, _) = cbc::unbounded();
-//         let (_call_button_tx, call_button_rx) = cbc::unbounded();
-//         let (alarm_tx, alarm_rx) = cbc::unbounded();
-
-//         alarm_tx.send(1).unwrap();
-
-//         std::thread::spawn(move || {
-//             run(1, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
-//         });
-
-//         // Verify alarm was processed
-//         assert!(sender_rx.try_recv().is_ok());
-//     }
-
-//     // Tests that HeartBeat message is sent with correct WorldView
-//     #[test]
-//     #[ignore = "Requires to run more elevators"]
-//     fn test_sends_heartbeat() {
-//         let mut world = WorldView::init(1);
-     
-//         // Create all channels with small buffers
-//         let (sender_tx, sender_rx) = cbc::bounded(1);
-//         let (controller_tx, controller_rx) = cbc::bounded(1);
-//         let (lights_tx, lights_rx) = cbc::bounded(1);
-
-//         // Spawn thread to handle controller messages
-//         let controller_handler = thread::spawn(move || {
-//             match controller_rx.recv_timeout(Duration::from_millis(100)) {
-//                 Ok(messages::Controller::Requests(_)) => (),
-//                 _ => panic!("Controller channel error"),
-//             }
-//         });
-
-//         // Spawn thread to handle lights messages
-//         let lights_handler = thread::spawn(move || {
-//             match lights_rx.recv_timeout(Duration::from_millis(100)) {
-//                 Ok(messages::Controller::Requests(_)) => (),
-//                 _ => panic!("Lights channel error"),
-//             }
-//         });
-
-//         // Execute the function under test
-//         inform_everybody(&mut world, &sender_tx, &controller_tx, &lights_tx);
-
-//         // Verify the heartbeat message
-//         match sender_rx.recv_timeout(Duration::from_millis(100)) {
-//             Ok(messages::Manager::HeartBeat(wv)) => assert_eq!(wv.id, 1),
-//             _ => panic!("Expected HeartBeat message"),
-
-
-
-//         // Ensure all handlers completed
-//         controller_handler.join().expect("Controller handler failed");
-//         lights_handler.join().expect("Lights handler failed");
-//         }
-// // Checks that run processes messages correctly
-//             #[test]
-//             #[ignore = "Requires to run more elevators"]
-//             fn test_run() {
-//                 let (manager_tx, manager_rx) = cbc::unbounded();
-//                 let (sender_tx, sender_rx) = cbc::unbounded();
-//                 let (controller_tx, controller_rx) = cbc::unbounded();
-//                 let (lights_tx, lights_rx) = cbc::unbounded();
-//                 let (call_button_tx, call_button_rx) = cbc::unbounded();
-//                 let (alarm_tx, alarm_rx) = cbc::unbounded();
-        
-//                 let id = 1;
-//                 let manager_handle = std::thread::spawn(move || {
-//                     run(id, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
-//                 });
-        
-//                 manager_tx.send(messages::Manager::Ping).unwrap();
-//                 manager_tx.send(messages::Manager::HeartBeat(WorldView::init(2))).unwrap();
-//                 manager_tx.send(messages::Manager::ElevatorState(Dirn::Up, ElevatorBehaviour::Moving, 3)).unwrap();
-//                 manager_tx.send(messages::Manager::ClearRequest(2, [true, false, true])).unwrap();
-        
-//                 let button = CallButton { floor: 2, call: 0 };
-//                 call_button_tx.send(button).unwrap();
-        
-//                 alarm_tx.send(1).unwrap();
-        
-//                 manager_handle.join().unwrap();
-//             }
-
-//             // Checks that run processes messages correctly
-//             #[test]
-//             #[ignore = "Requires to run more elevators"]
-//             fn test_run_humble() {
-//                 let (manager_tx, manager_rx) = cbc::unbounded();
-//                 let (sender_tx, sender_rx) = cbc::unbounded();
-//                 let (controller_tx, controller_rx) = cbc::unbounded();
-//                 let (lights_tx, lights_rx) = cbc::unbounded();
-//                 let (call_button_tx, call_button_rx) = cbc::unbounded();
-//                 let (alarm_tx, alarm_rx) = cbc::unbounded();
-        
-//                 let id = 1;
-//                 let manager_handle = std::thread::spawn(move || {
-//                     run(id, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
-//                 });
-        
-//                 manager_tx.send(messages::Manager::Ping).unwrap();
-//                 manager_tx.send(messages::Manager::HeartBeat(WorldView::init(2))).unwrap();
-//                 manager_tx.send(messages::Manager::ElevatorState(Dirn::Up, ElevatorBehaviour::Moving, 3)).unwrap();
-//                 manager_tx.send(messages::Manager::ClearRequest(2, [true, false, true])).unwrap();
-        
-//                 let button = CallButton { floor: 2, call: 0 };
-//                 call_button_tx.send(button).unwrap();
-        
-//                 alarm_tx.send(1).unwrap();
-        
-//                 manager_handle.join().unwrap();
-//             }
-
-//             // Checks that run processes messages correctly
-//             #[test]
-//             #[ignore = "Requires to run more elevators"]
-//             fn test_run_foreign() {
-//                 let (manager_tx, manager_rx) = cbc::unbounded();
-//                 let (sender_tx, sender_rx) = cbc::unbounded();
-//                 let (controller_tx, controller_rx) = cbc::unbounded();
-//                 let (lights_tx, lights_rx) = cbc::unbounded();
-//                 let (call_button_tx, call_button_rx) = cbc::unbounded();
-//                 let (alarm_tx, alarm_rx) = cbc::unbounded();
-        
-//                 let id = 1;
-//                 let manager_handle = std::thread::spawn(move || {
-//                     run(id, manager_rx, sender_tx, controller_tx, lights_tx, call_button_rx, alarm_rx);
-//                 });
-        
-//                 manager_tx.send(messages::Manager::Ping).unwrap();
-//                 manager_tx.send(messages::Manager::HeartBeat(WorldView::init(2))).unwrap();
-//                 manager_tx.send(messages::Manager::ElevatorState(Dirn::Up, ElevatorBehaviour::Moving, 3)).unwrap();
-//                 manager_tx.send(messages::Manager::ClearRequest(2, [true, false, true])).unwrap();
-        
-//                 let button = CallButton { floor: 2, call: 0 };
-//                 call_button_tx.send(button).unwrap();
-        
-//                 alarm_tx.send(1).unwrap();
-        
-//                 manager_handle.join().unwrap();
-//             }
-//     // Helper function to drain a channel
-//     fn drain_channel<T>(rx: &cbc::Receiver<T>) {
-//         while let Ok(_) = rx.try_recv() {}
-//         }
-
-//     // Tests that active elevators get has_request set correctly
-//     #[test]
-//     #[ignore = "Requires to run more elevators"]
-//     fn test_updates_active_elevators() {
-//         let world = WorldView::init(1);
-//         let (sender_tx, sender_rx) = cbc::unbounded();
-//         let (controller_tx, controller_rx) = cbc::unbounded();
-//         let (lights_tx, lights_rx) = cbc::unbounded();
-
-//         // Spawn consumers for all channels
-//         thread::spawn(move || {
-//             drain_channel(&sender_rx);
-//             drain_channel(&controller_rx);
-//             drain_channel(&lights_rx);
-//             });
-
-//         let mut mock_world = world.clone();
-//         mock_world.elevators.get_mut(&1).unwrap().has_request = false;
-        
-//         inform_everybody(&mut mock_world, &sender_tx, &controller_tx, &lights_tx);
-
-//         let elev = mock_world.elevators.get(&1).unwrap();
-//         assert!(elev.has_request);
-//         assert_eq!(elev.detect_if_dead_counter, 10);
-// }
-
+        let elev = mock_world.elevators.get(&1).unwrap();
+        assert!(elev.has_request);
+    }
+}

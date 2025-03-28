@@ -191,49 +191,6 @@ pub fn covert_json_to_all_controller_reqs(output_json: &str) -> Option<HashMap<i
     Some(assignments)
 }
 
-/// Extracts elevator IDs that have assigned calls from HRA output.
-///
-/// # Parameters
-/// - `parsed_json`: Parsed JSON Value from HRA output
-///
-/// # Returns
-/// - `Some(Vec<i32>)`: List of elevator IDs with assigned calls
-/// - `None`: If JSON structure is invalid
-///
-/// # Notes
-/// - Only considers objects with keys starting with "id_"
-/// - An elevator is included if any of its assigned calls is true
-fn ids_with_assigned_calls(parsed_json: &Value) -> Option<Vec<i32>> {
-    Some(
-        parsed_json.as_object()?
-            .iter()
-            .filter_map(|(key, val)| {
-                if key.starts_with("id_") {
-                    let has_true = val.as_array()
-                        .map(|arr| {
-                            arr.iter().any(|inner_arr| {
-                                inner_arr.as_array()
-                                    .map(|bool_vals| {
-                                        bool_vals.iter().any(|bool_val| bool_val.as_bool().unwrap_or(false))
-                                    })
-                                    .unwrap_or(false)
-                            })
-                        })
-                        .unwrap_or(false);
-
-                    if has_true {
-                        key.trim_start_matches("id_").parse::<i32>().ok()
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect(),
-    )
-}
-
 #[cfg(test)]
 
 /// Test module for HRA executable execution
@@ -323,6 +280,7 @@ mod test_run_hra_executable {
 
 /// Test module for elevator algorithm
 mod test_elevator_algorithm {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -374,6 +332,11 @@ mod test_elevator_algorithm {
                 [true, false, false],
                 [false, true, false],
                 [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
+                [false, false, false],
                 [false, false, false]
             ]);
             assert_eq!(assigned_elevators, vec![1]);
@@ -406,146 +369,186 @@ mod test_elevator_algorithm {
             [false, false, false],
             [false, false, false],
             [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
+            [false, false, false],
             [false, false, false]
         ]);
         assert!(assigned_elevators.is_empty());
     }
 }
 
-/// Test module for JSON to controller requests conversion
-mod test_conver_json_to_controller_reqs {
-    use super::*;
+// Test module for JSON to controller requests conversion
+// mod test_conver_json_to_controller_reqs {
+//     use super::*;
 
-    #[test]
-    fn test_covert_json_to_controller_reqs() {
-        let json_data = r#"{
-            "id_1": [[false, false], [false, false], [false, false], [false, false]],
-            "id_2": [[true, false], [false, true], [false, false], [false, false]]
-        }"#;
+//     pub fn covert_json_to_controller_reqs(
+//         output_json: &str,
+//         id: u8,
+//     ) -> Result<(fsm::ControllerRequests, Vec<i32>), serde_json::Error> {
+//         let parsed_json: Value = serde_json::from_str(output_json)?;
 
-        let result = covert_json_to_controller_reqs(json_data, 2).unwrap();
-        let expected_output = (
-            [
-                [true, false, false],
-                [false, true, false],
-                [false, false, false],
-                [false, false, false]
-            ],
-            vec![2]
-        );
-        assert_eq!(result, expected_output);
-    }
+//         let active_elevators = ids_with_assigned_calls(&parsed_json)
+//             .ok_or_else(|| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "Failed to get active elevators")))?;
 
-    #[test]
-    fn test_covert_json_to_controller_reqs_invalid_json() {
-        let json_data = r#"{
-            "id_1": [[false, false], [false, false], [false, false], [false, false],
-            "id_2": [[true, false], [false, true], [false, false], [false, false]]
-        }"#;
+//         let mut controller_requests: fsm::ControllerRequests =
+//             [[false; config::CALL_COUNT]; config::FLOOR_COUNT];
 
-        let result = covert_json_to_controller_reqs(json_data, 2);
-        assert!(result.is_err());
-    }
+//         let id_data = parsed_json
+//             .get(&format!("id_{}", id))
+//             .ok_or_else(|| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "id not found")))?;
 
-    #[test]
-    fn test_covert_json_to_controller_reqs_invalid_id() {
-        let json_data = r#"{
-            "id_1": [[false, false], [false, false], [false, false], [false, false]],
-            "id_2": [[true, false], [false, true], [false, false], [false, false]]
-        }"#;
+//         for (floor, bool_pair) in id_data
+//             .as_array()
+//             .ok_or_else(|| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "id_data is not an array")))?
+//             .iter()
+//             .enumerate()
+//         {
+//             // <-- Add this part back clearly!
+//             let pair = bool_pair
+//                 .as_array()
+//                 .ok_or_else(|| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "pair is not an array")))?;
 
-        let result = covert_json_to_controller_reqs(json_data, 3);
-        assert!(result.is_err());
-    }
+//             controller_requests[floor][0] = pair.get(0).and_then(|b| b.as_bool()).unwrap_or(false);
+//             controller_requests[floor][1] = pair.get(1).and_then(|b| b.as_bool()).unwrap_or(false);
+//         }
 
-    #[test]
-    fn test_covert_json_to_controller_reqs_invalid_pair() {
-        let json_data = r#"{
-            "id_1": [[false, false], [false, false], [false, false], [false, false]],
-            "id_2": [[true, false], [false, true], [false, false], [false, false]]
-        }"#;
+//         // Move this outside the loop clearly:
+//         Ok((controller_requests, active_elevators))
+//     }
 
-        let result = covert_json_to_controller_reqs(json_data, 2).unwrap();
-        let expected_output = (
-            [
-                [true, false, false],
-                [false, true, false],
-                [false, false, false],
-                [false, false, false]
-            ],
-            vec![2]
-        );
-        assert_eq!(result, expected_output);
-    }
-}
+//     #[test]
+//     fn test_covert_json_to_controller_reqs() {
+//         let json_data = r#"{
+//             "id_1": [[false, false], [false, false], [false, false], [false, false]],
+//             "id_2": [[true, false], [false, true], [false, false], [false, false]]
+//         }"#;
 
-/// Test module for ID extraction from HRA output
-mod test_ids_with_assigned_calls {
-    use super::*;
+//         let result = covert_json_to_controller_reqs(json_data, 2).unwrap();
+//         let expected_output = (
+//             [
+//                 [true, false, false],
+//                 [false, true, false],
+//                 [false, false, false],
+//                 [false, false, false]
+//             ],
+//             vec![2]
+//         );
+//         assert_eq!(result, expected_output);
+//     }
 
-    #[test]
-    fn test_ids_with_assigned_calls() {
-        let json = r#"{
-            "id_1": [[true, false], [false, false], [false, false], [false, false]],
-            "id_2": [[false, false], [false, false], [false, false], [false, false]],
-            "id_3": [[false, false], [false, false], [false, false], [false, false]]
-        }"#;
+//     #[test]
+//     fn test_covert_json_to_controller_reqs_invalid_json() {
+//         let json_data = r#"{
+//             "id_1": [[false, false], [false, false], [false, false], [false, false],
+//             "id_2": [[true, false], [false, true], [false, false], [false, false]]
+//         }"#;
 
-        let parsed_json: Value = serde_json::from_str(json).unwrap();
-        let result = ids_with_assigned_calls(&parsed_json).unwrap();
-        assert_eq!(result, vec![1]);
-    }
+//         let result = covert_json_to_controller_reqs(json_data, 2);
+//         assert!(result.is_err());
+//     }
 
-    #[test]
-    fn test_ids_with_assigned_calls_multiple_ids() {
-        let json = r#"{
-            "id_1": [[true, false], [false, false], [false, false], [false, false]],
-            "id_2": [[false, false], [false, false], [false, false], [false, false]],
-            "id_3": [[true, false], [false, false], [false, false], [false, false]]
-        }"#;
+//     #[test]
+//     fn test_covert_json_to_controller_reqs_invalid_id() {
+//         let json_data = r#"{
+//             "id_1": [[false, false], [false, false], [false, false], [false, false]],
+//             "id_2": [[true, false], [false, true], [false, false], [false, false]]
+//         }"#;
 
-        let parsed_json: Value = serde_json::from_str(json).unwrap();
-        let result = ids_with_assigned_calls(&parsed_json).unwrap();
-        assert_eq!(result, vec![1, 3]);
-    }
+//         let result = covert_json_to_controller_reqs(json_data, 3);
+//         assert!(result.is_err());
+//     }
 
-    #[test]
-    fn test_ids_with_assigned_calls_no_true() {
-        let json = r#"{
-            "id_1": [[false, false], [false, false], [false, false], [false, false]],
-            "id_2": [[false, false], [false, false], [false, false], [false, false]],
-            "id_3": [[false, false], [false, false], [false, false], [false, false]]
-        }"#;
+//     #[test]
+//     fn test_covert_json_to_controller_reqs_invalid_pair() {
+//         let json_data = r#"{
+//             "id_1": [[false, false], [false, false], [false, false], [false, false]],
+//             "id_2": [[true, false], [false, true], [false, false], [false, false]]
+//         }"#;
 
-        let parsed_json: Value = serde_json::from_str(json).unwrap();
-        let result = ids_with_assigned_calls(&parsed_json).unwrap();
-        assert_eq!(result, Vec::<i32>::new());
-    }
+//         let result = covert_json_to_controller_reqs(json_data, 2).unwrap();
+//         let expected_output = (
+//             [
+//                 [true, false, false],
+//                 [false, true, false],
+//                 [false, false, false],
+//                 [false, false, false]
+//             ],
+//             vec![2]
+//         );
+//         assert_eq!(result, expected_output);
+//     }
+// }
 
-    #[test]
-    #[should_panic]
-    fn test_ids_with_assigned_calls_invalid_json() {
-        let json = r#"{
-            "id1": [[true, false], [false, false], [false, false], [false, false]],
-            "id_2": [[false, false], [false, false], [false, false], [false, false]],
-            "id_3": [[false, false], [false, false], [false, false] [false, false]]
-        }"#;
+// /// Test module for ID extraction from HRA output
+// mod test_ids_with_assigned_calls {
+//     use super::*;
 
-        let parsed_json: Value = serde_json::from_str(json).unwrap();
-        let result = ids_with_assigned_calls(&parsed_json).unwrap();
-        assert_eq!(result, vec![1, 3]);
-    }
+//     #[test]
+//     fn test_ids_with_assigned_calls() {
+//         let json = r#"{
+//             "id_1": [[true, false], [false, false], [false, false], [false, false]],
+//             "id_2": [[false, false], [false, false], [false, false], [false, false]],
+//             "id_3": [[false, false], [false, false], [false, false], [false, false]]
+//         }"#;
 
-    #[test]
-    fn ids_with_assigned_calls_wrong_id() {
-        let json = r#"{
-            "id1": [[true, false], [false, false], [false, false], [false, false]],
-            "id_2": [[false, false], [false, false], [false, false], [false, false]],
-            "id_3": [[false, false], [false, false], [false, false], [false, false]]
-        }"#;
+//         let parsed_json: Value = serde_json::from_str(json).unwrap();
+//         let result = ids_with_assigned_calls(&parsed_json).unwrap();
+//         assert_eq!(result, vec![1]);
+//     }
 
-        let parsed_json: Value = serde_json::from_str(json).unwrap();
-        let result = ids_with_assigned_calls(&parsed_json).unwrap();
-        assert!(result.is_empty()); 
-    }
-}
+//     #[test]
+//     fn test_ids_with_assigned_calls_multiple_ids() {
+//         let json = r#"{
+//             "id_1": [[true, false], [false, false], [false, false], [false, false]],
+//             "id_2": [[false, false], [false, false], [false, false], [false, false]],
+//             "id_3": [[true, false], [false, false], [false, false], [false, false]]
+//         }"#;
+
+//         let parsed_json: Value = serde_json::from_str(json).unwrap();
+//         let result = ids_with_assigned_calls(&parsed_json).unwrap();
+//         assert_eq!(result, vec![1, 3]);
+//     }
+
+//     #[test]
+//     fn test_ids_with_assigned_calls_no_true() {
+//         let json = r#"{
+//             "id_1": [[false, false], [false, false], [false, false], [false, false]],
+//             "id_2": [[false, false], [false, false], [false, false], [false, false]],
+//             "id_3": [[false, false], [false, false], [false, false], [false, false]]
+//         }"#;
+
+//         let parsed_json: Value = serde_json::from_str(json).unwrap();
+//         let result = ids_with_assigned_calls(&parsed_json).unwrap();
+//         assert_eq!(result, Vec::<i32>::new());
+//     }
+
+//     #[test]
+//     #[should_panic]
+//     fn test_ids_with_assigned_calls_invalid_json() {
+//         let json = r#"{
+//             "id1": [[true, false], [false, false], [false, false], [false, false]],
+//             "id_2": [[false, false], [false, false], [false, false], [false, false]],
+//             "id_3": [[false, false], [false, false], [false, false] [false, false]]
+//         }"#;
+
+//         let parsed_json: Value = serde_json::from_str(json).unwrap();
+//         let result = ids_with_assigned_calls(&parsed_json).unwrap();
+//         assert_eq!(result, vec![1, 3]);
+//     }
+
+//     #[test]
+//     fn ids_with_assigned_calls_wrong_id() {
+//         let json = r#"{
+//             "id1": [[true, false], [false, false], [false, false], [false, false]],
+//             "id_2": [[false, false], [false, false], [false, false], [false, false]],
+//             "id_3": [[false, false], [false, false], [false, false], [false, false]]
+//         }"#;
+
+//         let parsed_json: Value = serde_json::from_str(json).unwrap();
+//         let result = ids_with_assigned_calls(&parsed_json).unwrap();
+//         assert!(result.is_empty()); 
+//     }
+// }
