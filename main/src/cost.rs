@@ -84,14 +84,16 @@ pub fn elevator_algorithm(world_view: &WorldView) -> Option<(fsm::ControllerRequ
     let working_elevators: std::collections::HashSet<u8> = alive_elevators
         .iter()
         .filter(|id| {
-            if let Some(elevator) = world_view.get_elevators().get(id) {
+            if **id == world_view.get_id() {
+                true
+            } else if let Some(elevator) = world_view.get_elevators().get(id) {
                 elevator.is_working
-        } else {
-            false
-        }
-    })
-    .cloned()
-    .collect();
+            } else {
+                false
+            }
+        })
+        .cloned()
+        .collect();
     if working_elevators.is_empty() {
         return Some(([[false; config::CALL_COUNT]; config::FLOOR_COUNT], vec![]));
     }
