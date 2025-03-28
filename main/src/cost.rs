@@ -332,11 +332,6 @@ mod test_elevator_algorithm {
                 [true, false, false],
                 [false, true, false],
                 [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
                 [false, false, false]
             ]);
             assert_eq!(assigned_elevators, vec![1]);
@@ -366,11 +361,6 @@ mod test_elevator_algorithm {
         
         let (controller_reqs, assigned_elevators) = result.unwrap();
         assert_eq!(controller_reqs, [
-            [false, false, false],
-            [false, false, false],
-            [false, false, false],
-            [false, false, false],
-            [false, false, false],
             [false, false, false],
             [false, false, false],
             [false, false, false],
