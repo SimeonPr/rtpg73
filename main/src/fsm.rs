@@ -584,11 +584,6 @@ mod tests_fsm {
                 [false, false, false],
                 [false, true, false], 
                 [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
                 [false, false, false]
             ],
             .._create_test_elevator(ElevatorBehaviour::Idle)
@@ -607,12 +602,7 @@ mod tests_fsm {
                 [true, false, false],
                 [false, false, false],
                 [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false]
+                [false, false, false] 
             ],
             .._create_test_elevator(ElevatorBehaviour::Idle)
         };
@@ -629,11 +619,6 @@ mod tests_fsm {
                 [false, false, false],
                 [false, false, false],
                 [true, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
                 [false, false, false]
             ],
             .._create_test_elevator(ElevatorBehaviour::Idle)
@@ -652,12 +637,7 @@ mod tests_fsm {
                 [false, false, false],
                 [false, false, true], 
                 [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false],
-                [false, false, false]
+                [false, false, false] 
             ],
             .._create_test_elevator(ElevatorBehaviour::Moving)
         };
