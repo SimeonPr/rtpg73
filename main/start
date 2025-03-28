@@ -1,9 +1,23 @@
 # Set the number to the first argument or default to 0
 num=${1:-0}
 
+# Check if hall_request_assigner exists, if not, try to build it
+if [ ! -e "./src/hall_request_assigner/hall_request_assigner" ]; then
+    echo "Trying to build hall_request_assigner"
+    cd ./src/hall_request_assigner && ./build.sh
+    if [ ! -e "hall_request_assigner" ]; then
+        echo "Failed to build hall_request_assigner. Running without it."
+    fi
+    cd - > /dev/null  # Return to the original directory without spamming output
+fi
+
 # Infinite loop calling the program with the number
 while true; do
     RUST_LOG=info cargo run --release -- --id "$num"
-    sleep 1
+    if [ $? -ne 0 ]; then
+        echo "cargo run failed, retrying in 5 seconds..."
+        sleep 5  # Avoid hammering the system
+    else
+        sleep 1
+    fi
 done
-/// Adds two numbers together.
